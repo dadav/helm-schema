@@ -65,7 +65,7 @@ Flags:
 
 Each annotation must start with 
 
-> # @schema
+> `# @schema`
 
 It must be written in front of the key you want to annotate.
 
