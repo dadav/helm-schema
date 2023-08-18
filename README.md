@@ -69,6 +69,8 @@ Each annotation must start with
 
 It must be written in front of the key you want to annotate.
 
+You can use backslashes to make it more readable (write the options in multiple lines).
+
 Valid options are:
 
 **type**
