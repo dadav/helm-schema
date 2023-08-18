@@ -1,5 +1,14 @@
 # helm-schema
 
+<p>
+  <img src="images/logo.png" width="400" />
+  <br />
+  <a href="https://github.com/dadav/helm-schema/releases"><img src="https://img.shields.io/github/release/dadav/helm-schemas.svg" alt="Latest Release"></a>
+  <a href="https://pkg.go.dev/github.com/dadav/helm-schemas?tab=doc"><img src="https://godoc.org/github.com/golang/gddo?status.svg" alt="Go Docs"></a>
+  <a href="https://github.com/dadav/helm-schema/actions"><img src="https://github.com/dadav/helm-schema/workflows/build/badge.svg" alt="Build Status"></a>
+</p>
+
+
 This tool tries to help you to easily create some nice jsonschema for your helm chart.
 
 By default it will traverse the current directory and look for `Chart.yaml` files.
