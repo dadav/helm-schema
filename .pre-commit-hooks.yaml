@@ -1,9 +1,8 @@
 ---
 - id: helm-schema
-  args: []
   description: Uses helm-schema to create a jsonschema.
   entry: helm-schema
   files: ^(Chart|values)\.yaml$
-  language: script
+  language: golang
   name: Helm Schema
   require_serial: true
