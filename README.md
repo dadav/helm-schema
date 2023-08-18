@@ -1,11 +1,12 @@
 # helm-schema
 
-<p>
-  <img src="images/logo.png" width="400" />
+<p align="center">
+  <img src="images/logo.png" width="600" />
   <br />
   <a href="https://github.com/dadav/helm-schema/releases"><img src="https://img.shields.io/github/release/dadav/helm-schemas.svg" alt="Latest Release"></a>
   <a href="https://pkg.go.dev/github.com/dadav/helm-schemas?tab=doc"><img src="https://godoc.org/github.com/golang/gddo?status.svg" alt="Go Docs"></a>
   <a href="https://github.com/dadav/helm-schema/actions"><img src="https://github.com/dadav/helm-schema/workflows/build/badge.svg" alt="Build Status"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT LICENSE"></a>
 </p>
 
 
