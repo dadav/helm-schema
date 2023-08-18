@@ -63,71 +63,109 @@ Flags:
 
 ## Annotations
 
-Each annotation must start with `# @schema`.
+Each annotation must start with 
+
+> # @schema
+
 It must be written in front of the key you want to annotate.
 
 Valid options are:
 
 **type**
-Defines the [jsonschema-type](https://json-schema.org/understanding-json-schema/reference/type.html) of the object
+
+Defines the [jsonschema-type](https://json-schema.org/understanding-json-schema/reference/type.html) of the object.
+
 Possible values are:
 > object, array, string, number, integer, null
 
 **title**
-Defines the [title field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=title) of the object
+
+Defines the [title field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=title) of the object.
+
 Defaults to the key itself.
 
 **description**
-Defines the [description field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=description) of the object
+
+Defines the [description field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=description) of the object.
+
 Defaults to the comment which has no `# @schema` prefix.
 
 **items**
+
 Takes a string of possible array value types separated by `|`.
+
 Implies `type=array`.
-Example: Array can contain string or null items: `items=string|null`
+
+_Example:_ Array can contain string or null items: `items=string|null`
 
 **pattern**
+
 Regex pattern to test the value.
+
 Implies `type=string`.
 
 **format**
+
 The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values.
+
 Implies `type=string`.
 
 **required**
-Adds the key to the required items. Takes boolean values.
+
+Adds the key to the required items. 
+
+Takes boolean values.
 
 **examples**
-Some examples your can provide for the enduser. They must be separated by `|`
+
+Some examples your can provide for the enduser. 
+
+They must be separated by `|`
 
 **min**
+
 Minimum value.
+
 Can't be used with `xmin`.
+
 Must be smaller than `max` or `xmax` (if used).
 
 **xmin**
+
 Exclusive minimum.
+
 Can't be used with `min`.
+
 Must be smaller than `max` or `xmax` (if used).
 
 **max**
+
 Maximum value.
+
 Can't be used with `xmax`.
+
 Must be bigger than `min` or `xmin` (if used).
 
 **xmax**
+
 Exclusive maximum value.
+
 Can't be used with `max`.
+
 Must be bigger than `min` or `xmin` (if used).
 
 **multiple**
+
 Value, the yaml-value must be a multiple of.
+
 For example: If you set this to 10, allowed values would be 0, 10, 20, 30....
 
 **const**
+
 Single allowed value.
 
 **enum**
+
 Multiple allowed values.
 
 ## Example
