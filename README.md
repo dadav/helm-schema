@@ -2,6 +2,12 @@
 
 This tool tries to help you to easily create some nice jsonschema for your helm chart.
 
+By default it will traverse the current directory and look for `Chart.yaml` files.
+For every file, helm-schema will try to find one of the given value filenames.
+The first files found will be read and a jsonschema will be created.
+For every dependency defined in the Chart.yaml file, a reference to the dependencies jsonschema
+will be created.
+
 ## Installation
 
 ```bash
