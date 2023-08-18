@@ -122,6 +122,12 @@ Adds the key to the required items.
 
 Takes boolean values.
 
+**deprecated**
+
+Marks the option as deprecated.
+
+Takes boolean values.
+
 **examples**
 
 Some examples your can provide for the enduser. 
