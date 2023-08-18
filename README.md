@@ -199,3 +199,7 @@ Will result in this jsonschema:
   "type": "object"
 }
 ```
+
+## License
+
+[MIT](https://github.com/dadav/helm-schema/blob/main/LICENSE)
