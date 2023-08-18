@@ -31,6 +31,10 @@ go install github.com/dadav/helm-schema/cmd/helm-schema@latest
 If you want to automatically generate a new `values.schema.json` if you change the `values.yaml`
 file, you can do the following:
 
+Copy the [.pre-commit-config.yaml](./.pre-commit-config.yaml) to your helm chart repository.
+
+Then run this commands:
+
 ```bash
 pre-commit install
 pre-commit install-hooks
