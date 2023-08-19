@@ -99,7 +99,7 @@ func worker(
 
 		if !skipDeps {
 			for _, dep := range chart.Dependencies {
-				if depName, ok := dep["name"]; ok {
+				if depName, ok := dep["name"].(string); ok {
 					schema["properties"].(map[string]interface{})[depName] = map[string]string{
 						"title":       chart.Name,
 						"description": chart.Description,

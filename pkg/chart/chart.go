@@ -8,9 +8,9 @@ import (
 )
 
 type ChartFile struct {
-	Name         string              `yaml:"name"`
-	Description  string              `yaml:"description"`
-	Dependencies []map[string]string `yaml:"dependencies"`
+	Name         string                   `yaml:"name"`
+	Description  string                   `yaml:"description"`
+	Dependencies []map[string]interface{} `yaml:"dependencies"`
 }
 
 // ReadChart parses the given yaml into a ChartFile struct
