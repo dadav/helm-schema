@@ -47,6 +47,7 @@ type SchemaAnnotation struct {
 	MultipleOf       *int
 }
 
+// ToSchema converts the SchemaAnnotation struct to the final jsonschema
 func (s SchemaAnnotation) ToSchema() map[string]interface{} {
 	ret := map[string]interface{}{}
 
@@ -117,7 +118,20 @@ func (s SchemaAnnotation) ToSchema() map[string]interface{} {
 	return ret
 }
 
+// Validate checks if there are some semantic errors in the given schema data
 func (s SchemaAnnotation) Validate() error {
+	// Check if type is valid
+	if s.Type != "" &&
+		s.Type != "object" &&
+		s.Type != "string" &&
+		s.Type != "integer" &&
+		s.Type != "number" &&
+		s.Type != "array" &&
+		s.Type != "null" &&
+		s.Type != "boolean" {
+		return errors.New(fmt.Sprintf("Unsupported type %s", s.Type))
+	}
+
 	// Check if type=string if pattern!=""
 	if s.Pattern != "" && s.Type != "" && s.Type != "string" {
 		return errors.New(fmt.Sprintf("Cant use pattern if type is %s. Use type=string", s.Type))
@@ -237,13 +251,21 @@ func typeFromTag(tag string) (string, error) {
 	return "", errors.New(fmt.Sprintf("Unsupported yaml tag found: %s", tag))
 }
 
-func getSchemaFromLine(line string) SchemaAnnotation {
+func getSchemaFromLine(line string) (SchemaAnnotation, error) {
 	schema := SchemaAnnotation{}
 	pat := regexp.MustCompile(`(\w+)=([^=]*.)(?:\s|$)`)
 	matches := pat.FindAllStringSubmatch(line, -1)
 
+	seen := make(map[string]bool)
+
 	for _, match := range matches {
 		k, v := match[1], match[2]
+		if _, ok := seen[k]; ok {
+			return schema, errors.New(fmt.Sprintf("Duplicate option %s", k))
+		} else {
+			seen[k] = true
+		}
+
 		switch k {
 		case "type":
 			schema.Type = v
@@ -271,39 +293,39 @@ func getSchemaFromLine(line string) SchemaAnnotation {
 			if num, err := strconv.Atoi(v); err == nil {
 				schema.Minimum = &num
 			} else {
-				log.Fatalf("Cant parse %v as int", v)
+				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
 			}
 		case "max":
 			if num, err := strconv.Atoi(v); err == nil {
 				schema.Maximum = &num
 			} else {
-				log.Fatalf("Cant parse %v as int", v)
+				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
 			}
 		case "xmax":
 			if num, err := strconv.Atoi(v); err == nil {
 				schema.ExclusiveMaximum = &num
 			} else {
-				log.Fatalf("Cant parse %v as int", v)
+				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
 			}
 		case "xmin":
 			if num, err := strconv.Atoi(v); err == nil {
 				schema.ExclusiveMinimum = &num
 			} else {
-				log.Fatalf("Cant parse %v as int", v)
+				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
 			}
 		case "multiple":
 			if num, err := strconv.Atoi(v); err == nil {
 				schema.MultipleOf = &num
 			} else {
-				log.Fatalf("Cant parse %v as int", v)
+				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
 			}
 		default:
-			log.Warnf("Unknown schema option %s", k)
+			log.Warnf("Unknown schema option %s. Ignoring", k)
 		}
 	}
 
 	if err := schema.Validate(); err != nil {
-		log.Fatal(err)
+		return schema, err
 	}
 
 	if schema.Pattern != "" || schema.Format != "" {
@@ -314,24 +336,30 @@ func getSchemaFromLine(line string) SchemaAnnotation {
 		schema.Type = "array"
 	}
 
-	return schema
+	return schema, nil
 }
 
-func GetSchemasFromComment(comment string) ([]SchemaAnnotation, string) {
+// GetSchemasFromComment parses the annotations from the given comment
+func GetSchemasFromComment(comment string) ([]SchemaAnnotation, string, error) {
 	result := []SchemaAnnotation{}
 	scanner := bufio.NewScanner(strings.NewReader(comment))
 	description := []string{}
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, SchemaPrefix) {
-			result = append(result, getSchemaFromLine(strings.TrimPrefix(line, SchemaPrefix)))
+			schema, err := getSchemaFromLine(strings.TrimPrefix(line, SchemaPrefix))
+			if err != nil {
+				return nil, "", err
+			}
+			result = append(result, schema)
 		} else {
 			description = append(description, strings.TrimPrefix(line, CommentPrefix))
 		}
 	}
-	return result, strings.Join(description, "\n")
+	return result, strings.Join(description, "\n"), nil
 }
 
+// YamlToJsonSchema recursevly parses the given yaml.Node and creates a jsonschema from it
 func YamlToJsonSchema(
 	node *yaml.Node,
 	keepFullComment bool,
@@ -368,7 +396,10 @@ func YamlToJsonSchema(
 				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
 			}
 
-			parsedSchemas, description := GetSchemasFromComment(comment)
+			parsedSchemas, description, err := GetSchemasFromComment(comment)
+			if err != nil {
+				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
+			}
 
 			if len(parsedSchemas) == 1 {
 				newSchema := parsedSchemas[0].ToSchema()

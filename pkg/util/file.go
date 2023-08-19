@@ -1,13 +1,13 @@
 package util
 
 import (
-	"os"
+	"io"
 	"strings"
 )
 
-// ReadYamlFile reads the content and replaces \r\n with \n
-func ReadYamlFile(filename string) ([]byte, error) {
-	content, err := os.ReadFile(filename)
+// ReadFileAndFixNewline reads the content of a io.Reader and replaces \r\n with \n
+func ReadFileAndFixNewline(reader io.Reader) ([]byte, error) {
+	content, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}

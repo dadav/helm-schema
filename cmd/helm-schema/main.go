@@ -47,7 +47,12 @@ func worker(
 ) {
 	for chartPath := range queue {
 		chartBasePath := filepath.Dir(chartPath)
-		chart, err := chart.ReadChartFile(chartPath)
+		file, err := os.Open(chartPath)
+		if err != nil {
+			errs <- err
+			continue
+		}
+		chart, err := chart.ReadChart(file)
 		if err != nil {
 			errs <- err
 			continue
@@ -73,7 +78,12 @@ func worker(
 			continue
 		}
 
-		content, err := util.ReadYamlFile(valuesPath)
+		valuesFile, err := os.Open(valuesPath)
+		if err != nil {
+			errs <- err
+			continue
+		}
+		content, err := util.ReadFileAndFixNewline(valuesFile)
 		if err != nil {
 			errs <- err
 			continue

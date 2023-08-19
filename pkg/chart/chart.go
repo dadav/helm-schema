@@ -1,6 +1,8 @@
 package chart
 
 import (
+	"io"
+
 	"github.com/dadav/helm-schema/pkg/util"
 	yaml "gopkg.in/yaml.v3"
 )
@@ -11,10 +13,11 @@ type ChartFile struct {
 	Dependencies []map[string]string `yaml:"dependencies"`
 }
 
-func ReadChartFile(path string) (ChartFile, error) {
+// ReadChart parses the given yaml into a ChartFile struct
+func ReadChart(reader io.Reader) (ChartFile, error) {
 	var chart ChartFile
 
-	chartContent, err := util.ReadYamlFile(path)
+	chartContent, err := util.ReadFileAndFixNewline(reader)
 	if err != nil {
 		return chart, err
 	}
