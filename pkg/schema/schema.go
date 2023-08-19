@@ -29,22 +29,23 @@ const (
 )
 
 type SchemaAnnotation struct {
-	Type             string
-	Title            string
-	Description      string
-	Pattern          string
-	Format           string
-	Required         bool
-	Deprecated       bool
-	Items            string
-	Enum             string
-	Const            string
-	Examples         string
-	Minimum          *int
-	Maximum          *int
-	ExclusiveMinimum *int
-	ExclusiveMaximum *int
-	MultipleOf       *int
+	Type                 string
+	Title                string
+	Description          string
+	Pattern              string
+	Format               string
+	Required             bool
+	Deprecated           bool
+	Items                string
+	Enum                 string
+	Const                string
+	Examples             string
+	Minimum              *int
+	Maximum              *int
+	ExclusiveMinimum     *int
+	ExclusiveMaximum     *int
+	MultipleOf           *int
+	AdditionalProperties bool
 }
 
 // ToSchema converts the SchemaAnnotation struct to the final jsonschema
@@ -113,6 +114,10 @@ func (s SchemaAnnotation) ToSchema() map[string]interface{} {
 			items = append(items, map[string]string{"type": item})
 		}
 		ret["items"] = map[string]interface{}{"oneOf": items}
+	}
+
+	if s.AdditionalProperties {
+		ret["additionalProperties"] = s.AdditionalProperties
 	}
 
 	return ret
@@ -319,6 +324,8 @@ func getSchemaFromLine(line string) (SchemaAnnotation, error) {
 			} else {
 				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
 			}
+		case "additional":
+			schema.AdditionalProperties = strings.ToLower(v) == "true"
 		default:
 			log.Warnf("Unknown schema option %s. Ignoring", k)
 		}
@@ -383,6 +390,8 @@ func YamlToJsonSchema(
 		if len(requiredProperties) > 0 {
 			schema["required"] = requiredProperties
 		}
+		// always disable on top level
+		schema["additionalProperties"] = false
 	case yaml.MappingNode:
 
 		for i := 0; i < len(node.Content); i += 2 {
@@ -472,6 +481,16 @@ func YamlToJsonSchema(
 				)
 				if len(requiredProperties) > 0 {
 					schema[keyNode.Value].(map[string]interface{})["required"] = requiredProperties
+				}
+				if _, ok := schema[keyNode.Value].(map[string]interface{})["additionalProperties"]; !ok {
+					// disable if not explicitly enabled via option
+					// and if any properties are set
+					if len(
+						schema[keyNode.Value].(map[string]interface{})["properties"].(map[string]interface{}),
+					) > 0 {
+						// if no properties are set
+						schema[keyNode.Value].(map[string]interface{})["additionalProperties"] = false
+					}
 				}
 			}
 		}

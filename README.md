@@ -182,6 +182,15 @@ Single allowed value.
 
 Multiple allowed values.
 
+**additional**
+
+Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`,
+which will be filled with keys that the jsonschema can't know.
+
+Defaults to `false` if the map is not an empty map.
+
+Takes boolean values.
+
 ## Example
 
 This values.yaml:
