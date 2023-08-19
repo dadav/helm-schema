@@ -11,6 +11,13 @@ builds:
   - main: ./cmd/helm-schema
     env:
       - CGO_ENABLED=0
+    goarch:
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - "6"
+      - "7"
     goos:
       - linux
       - windows
