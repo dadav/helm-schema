@@ -32,12 +32,14 @@ func configureLogging() {
 	log.SetLevel(logLevel)
 }
 
-func newCommand(run func(cmd *cobra.Command, args []string)) (*cobra.Command, error) {
+func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Command, error) {
 	cmd := &cobra.Command{
-		Use:     "helm-schema",
-		Short:   "helm-schema automatically generates a jsonschema file for helm charts from values files",
-		Version: version,
-		Run:     run,
+		Use:           "helm-schema",
+		Short:         "helm-schema automatically generates a jsonschema file for helm charts from values files",
+		Version:       version,
+		RunE:          run,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	logLevelUsage := fmt.Sprintf(

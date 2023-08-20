@@ -142,7 +142,7 @@ func worker(
 	}
 }
 
-func exec(_ *cobra.Command, _ []string) {
+func exec(cmd *cobra.Command, _ []string) error {
 	configureLogging()
 
 	chartSearchRoot := viper.GetString("chart-search-root")
@@ -227,11 +227,13 @@ loop:
 	}
 
 	chartNameToResult := make(map[string]Result)
+	foundErrors := false
 
 	// process results
 	for _, result := range results {
 		// Error handling
 		if len(result.Errors) > 0 {
+			foundErrors = true
 			if result.Chart != nil {
 				log.Errorf(
 					"Found %d errors while processing the chart %s (%s)",
@@ -283,7 +285,10 @@ loop:
 			}
 		}
 	}
-
+	if foundErrors {
+		return errors.New("foo")
+	}
+	return nil
 }
 
 func main() {
@@ -294,7 +299,6 @@ func main() {
 	}
 
 	if err := command.Execute(); err != nil {
-		log.Errorf("Failed to start the CLI: %s", err)
 		os.Exit(1)
 	}
 }
