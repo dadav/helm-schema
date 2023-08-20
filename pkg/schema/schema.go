@@ -387,6 +387,16 @@ func YamlToJsonSchema(
 			keepFullComment,
 			&requiredProperties,
 		)
+
+		if _, ok := schema["properties"].(map[string]interface{})["global"]; !ok {
+			// global key must be present, otherwise helm lint will fail
+			schema["properties"].(map[string]interface{})["global"] = map[string]interface{}{
+				"type":        "object",
+				"title":       "global",
+				"description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+			}
+		}
+
 		if len(requiredProperties) > 0 {
 			schema["required"] = requiredProperties
 		}
