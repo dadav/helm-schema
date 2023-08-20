@@ -32,12 +32,14 @@ func configureLogging() {
 	log.SetLevel(logLevel)
 }
 
-func newCommand(run func(cmd *cobra.Command, args []string)) (*cobra.Command, error) {
+func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Command, error) {
 	cmd := &cobra.Command{
-		Use:     "helm-schema",
-		Short:   "helm-schema automatically generates a jsonschema file for helm charts from values files",
-		Version: version,
-		Run:     run,
+		Use:           "helm-schema",
+		Short:         "helm-schema automatically generates a jsonschema file for helm charts from values files",
+		Version:       version,
+		RunE:          run,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	logLevelUsage := fmt.Sprintf(
@@ -48,6 +50,8 @@ func newCommand(run func(cmd *cobra.Command, args []string)) (*cobra.Command, er
 		StringP("chart-search-root", "c", ".", "directory to search recursively within for charts")
 	cmd.PersistentFlags().
 		BoolP("dry-run", "d", false, "don't actually create files just print to stdout passed")
+	cmd.PersistentFlags().
+		BoolP("use-refereces", "r", false, "use references instead of embeding dependencies schema")
 	cmd.PersistentFlags().
 		BoolP("keep-full-comment", "s", false, "If this flag is used, comment won't be cut off if two newlines are found.")
 	cmd.PersistentFlags().
