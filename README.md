@@ -63,6 +63,7 @@ Flags:
   -l, --log-level string           Level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")
   -n, --no-dependencies            don't analyze dependencies
   -o, --output-file string         jsonschema file path relative to each chart directory to which jsonschema will be written (default "values.schema.json")
+  -r, --use-refereces              use references instead of embeding dependencies schema
   -f, --value-files strings        filenames to check for chart values (default [values.yaml])
   -v, --version                    version for helm-schema
 ```
