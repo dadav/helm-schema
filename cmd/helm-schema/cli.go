@@ -49,6 +49,8 @@ func newCommand(run func(cmd *cobra.Command, args []string)) (*cobra.Command, er
 	cmd.PersistentFlags().
 		BoolP("dry-run", "d", false, "don't actually create files just print to stdout passed")
 	cmd.PersistentFlags().
+		BoolP("use-refereces", "r", false, "use references instead of embeding dependencies schema")
+	cmd.PersistentFlags().
 		BoolP("keep-full-comment", "s", false, "If this flag is used, comment won't be cut off if two newlines are found.")
 	cmd.PersistentFlags().
 		BoolP("no-dependencies", "n", false, "don't analyze dependencies")
