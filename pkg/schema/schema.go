@@ -44,11 +44,11 @@ type Schema struct {
 	Enum                  []string          `yaml:"enum,omitempty"                  json:"enum,omitempty"`
 	Const                 string            `yaml:"const,omitempty"                 json:"const,omitempty"`
 	Examples              []string          `yaml:"examples,omitempty"              json:"examples,omitempty"`
-	Minimum               int               `yaml:"minimum,omitempty"               json:"minimum,omitempty"`
-	Maximum               int               `yaml:"maximum,omitempty"               json:"maximum,omitempty"`
-	ExclusiveMinimum      int               `yaml:"exclusiveMinimum,omitempty"      json:"exclusiveMinimum,omitempty"`
-	ExclusiveMaximum      int               `yaml:"exclusiveMaximum,omitempty"      json:"exclusiveMaximum,omitempty"`
-	MultipleOf            int               `yaml:"multipleOf,omitempty"            json:"multipleOf,omitempty"`
+	Minimum               *int              `yaml:"minimum,omitempty"               json:"minimum,omitempty"`
+	Maximum               *int              `yaml:"maximum,omitempty"               json:"maximum,omitempty"`
+	ExclusiveMinimum      *int              `yaml:"exclusiveMinimum,omitempty"      json:"exclusiveMinimum,omitempty"`
+	ExclusiveMaximum      *int              `yaml:"exclusiveMaximum,omitempty"      json:"exclusiveMaximum,omitempty"`
+	MultipleOf            *int              `yaml:"multipleOf,omitempty"            json:"multipleOf,omitempty"`
 	AdditionalProperties  *bool             `yaml:"additionalProperties,omitempty"  json:"additionalProperties,omitempty"`
 	RequiredProperties    []string          `yaml:"-"                               json:"required,omitempty"`
 	UnevaluatedProperties []string          `yaml:"unevaluatedProperties,omitempty" json:"unevaluatedProperties,omitempty"`
@@ -81,7 +81,109 @@ func (s Schema) ToJson() ([]byte, error) {
 func (s Schema) Validate() error {
 	sl := gojsonschema.NewSchemaLoader()
 	sl.Validate = true
-	return sl.AddSchemas(gojsonschema.NewGoLoader(s))
+
+	if err := sl.AddSchemas(gojsonschema.NewGoLoader(s)); err != nil {
+		return err
+	}
+
+	// Check if type is valid
+	if s.Type != "" &&
+		s.Type != "object" &&
+		s.Type != "string" &&
+		s.Type != "integer" &&
+		s.Type != "number" &&
+		s.Type != "array" &&
+		s.Type != "null" &&
+		s.Type != "boolean" {
+		return errors.New(fmt.Sprintf("Unsupported type %s", s.Type))
+	}
+
+	// Check if type=string if pattern!=""
+	if s.Pattern != "" && s.Type != "" && s.Type != "string" {
+		return errors.New(fmt.Sprintf("Cant use pattern if type is %s. Use type=string", s.Type))
+	}
+
+	// Check if type=string if format!=""
+	if s.Format != "" && s.Type != "" && s.Type != "string" {
+		return errors.New(fmt.Sprintf("Cant use format if type is %s. Use type=string", s.Type))
+	}
+
+	// Cant use Format and Pattern together
+	if s.Format != "" && s.Pattern != "" {
+		return errors.New(fmt.Sprintf("Cant use format and pattern option at the same time"))
+	}
+
+	// Validate nested Items schema
+	if s.Items != nil {
+		if err := s.Items.Validate(); err != nil {
+			return err
+		}
+	}
+
+	// If type and items are used, type must be array
+	if s.Items != nil && s.Type != "" && s.Type != "array" {
+		return errors.New(fmt.Sprintf("Cant use items if type is %s. Use type=array", s.Type))
+	}
+
+	if s.Const != "" && s.Type != "" {
+		return errors.New("If your are using const, you can't use type")
+	}
+
+	if s.Enum != nil && s.Type != "" {
+		return errors.New("If your are using enum, you can't use type")
+	}
+
+	// Check if format is valid
+	// https://json-schema.org/understanding-json-schema/reference/string.html#built-in-formats
+	// We currently dont support https://datatracker.ietf.org/doc/html/rfc3339#appendix-A
+	if s.Format != "" &&
+		s.Format != "date-time" &&
+		s.Format != "time" &&
+		s.Format != "date" &&
+		s.Format != "duration" &&
+		s.Format != "email" &&
+		s.Format != "idn-email" &&
+		s.Format != "hostname" &&
+		s.Format != "idn-hostname" &&
+		s.Format != "ipv4" &&
+		s.Format != "ipv6" &&
+		s.Format != "uuid" &&
+		s.Format != "uri" &&
+		s.Format != "uri-reference" &&
+		s.Format != "iri" &&
+		s.Format != "iri-reference" &&
+		s.Format != "uri-template" &&
+		s.Format != "json-pointer" &&
+		s.Format != "relative-json-pointer" &&
+		s.Format != "regex" {
+		return errors.New(fmt.Sprintf("The format %s is not supported.", s.Format))
+	}
+
+	if s.Minimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+		return errors.New(fmt.Sprintf("If you use minimum, you cant use type=%s", s.Type))
+	}
+	if s.Maximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+		return errors.New(fmt.Sprintf("If you use maximum, you cant use type=%s", s.Type))
+	}
+	if s.ExclusiveMinimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+		return errors.New(fmt.Sprintf("If you use exclusiveMinimum, you cant use type=%s", s.Type))
+	}
+	if s.ExclusiveMaximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+		return errors.New(fmt.Sprintf("If you use exclusiveMaximum, you cant use type=%s", s.Type))
+	}
+	if s.MultipleOf != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+		return errors.New(fmt.Sprintf("If you use multiple, you cant use type=%s", s.Type))
+	}
+	if s.MultipleOf != nil && *s.MultipleOf <= 0 {
+		return errors.New("multiple option must be greater than 0")
+	}
+	if s.Minimum != nil && s.ExclusiveMinimum != nil {
+		return errors.New("You cant set minimum and exclusiveMinimum")
+	}
+	if s.Maximum != nil && s.ExclusiveMaximum != nil {
+		return errors.New("You cant set minimum and exclusiveMaximum")
+	}
+	return nil
 }
 
 func typeFromTag(tag string) (string, error) {
@@ -151,14 +253,14 @@ func YamlToSchema(
 ) Schema {
 	var schema Schema
 
-	requiredProperties := []string{}
-
 	switch node.Kind {
 	case yaml.DocumentNode:
 		log.Debug("Inside DocumentNode")
 		if len(node.Content) != 1 {
 			log.Fatalf("Strange yaml document found:\n%v\n", node.Content[:])
 		}
+
+		requiredProperties := []string{}
 
 		schema.Type = "object"
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
@@ -186,7 +288,6 @@ func YamlToSchema(
 		// always disable on top level
 		schema.AdditionalProperties = new(bool)
 	case yaml.MappingNode:
-		log.Debug("Inside MappingNode")
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
@@ -198,61 +299,67 @@ func YamlToSchema(
 				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
 			}
 
-			valueSchema, description, err := GetSchemaFromComment(comment)
+			keyNodeSchema, description, err := GetSchemaFromComment(comment)
 			if err != nil {
 				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
 			}
 
-			if valueSchema.HasData {
-				if err := valueSchema.Validate(); err != nil {
-					log.Fatalf("Error while validating jsonschema of key %s: %v", keyNode.Value, err)
+			if keyNodeSchema.HasData {
+				if err := keyNodeSchema.Validate(); err != nil {
+					log.Fatalf(
+						"Error while validating jsonschema of key %s: %v",
+						keyNode.Value,
+						err,
+					)
 				}
-			}
-
-			if valueSchema.Type == "" {
+			} else {
 				nodeType, err := typeFromTag(valueNode.Tag)
 				if err != nil {
 					log.Fatal(err)
 				}
-				valueSchema.Type = nodeType
+				keyNodeSchema.Type = nodeType
 			}
 
 			// Add key to required array of parent
-			if valueSchema.Required || !valueSchema.HasData {
+			if keyNodeSchema.Required || !keyNodeSchema.HasData {
 				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
 			}
 
-			if valueNode.Kind == yaml.MappingNode && (!valueSchema.HasData || valueSchema.AdditionalProperties == nil) {
-				valueSchema.AdditionalProperties = new(bool)
+			if valueNode.Kind == yaml.MappingNode &&
+				(!keyNodeSchema.HasData || keyNodeSchema.AdditionalProperties == nil) {
+				keyNodeSchema.AdditionalProperties = new(bool)
 			}
 
 			// If no title was set, use the key value
-			if valueSchema.Title == "" {
-				valueSchema.Title = keyNode.Value
+			if keyNodeSchema.Title == "" {
+				keyNodeSchema.Title = keyNode.Value
 			}
 
 			// If no description was set, use the rest of the comment as description
-			if valueSchema.Description == "" {
-				valueSchema.Description = description
+			if keyNodeSchema.Description == "" {
+				keyNodeSchema.Description = description
 			}
 
 			// If no default value was set, use the values node value as default
-			if valueSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
-				valueSchema.Default = valueNode.Value
+			if keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
+				keyNodeSchema.Default = valueNode.Value
 			}
 
 			// If the value is another map and no properties are set, get them from default values
-			if valueNode.Kind == yaml.MappingNode && valueSchema.Properties == nil {
-				valueSchema.Properties = YamlToSchema(
+			// TODO: also consider allOf, anyOf and oneOf
+			if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
+				requiredProperties := []string{}
+				keyNodeSchema.Properties = YamlToSchema(
 					valueNode,
 					keepFullComment,
 					&requiredProperties,
 				).Properties
 				if len(requiredProperties) > 0 {
-					valueSchema.RequiredProperties = requiredProperties
+					keyNodeSchema.RequiredProperties = requiredProperties
 				}
-			} else if valueNode.Kind == yaml.SequenceNode && valueSchema.Items == nil {
+			} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
 				// If the value is a sequence, but no items are predefined
+				// TODO: also consider allOf, anyOf and oneOf
 				var seqSchema Schema
 
 				for _, itemNode := range valueNode.Content {
@@ -278,12 +385,12 @@ func YamlToSchema(
 						seqSchema.AnyOf = append(seqSchema.AnyOf, itemSchema)
 					}
 				}
-				valueSchema.Items = &seqSchema
+				keyNodeSchema.Items = &seqSchema
 			}
 			if schema.Properties == nil {
 				schema.Properties = make(map[string]Schema)
 			}
-			schema.Properties[keyNode.Value] = valueSchema
+			schema.Properties[keyNode.Value] = keyNodeSchema
 		}
 	}
 

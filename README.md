@@ -63,20 +63,20 @@ Flags:
   -l, --log-level string           Level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")
   -n, --no-dependencies            don't analyze dependencies
   -o, --output-file string         jsonschema file path relative to each chart directory to which jsonschema will be written (default "values.schema.json")
-  -r, --use-refereces              use references instead of embeding dependencies schema
   -f, --value-files strings        filenames to check for chart values (default [values.yaml])
   -v, --version                    version for helm-schema
 ```
 
 ## Annotations
 
-Each annotation must start with 
+The jsonschema must be between two entries of
 
 > `# @schema`
 
 It must be written in front of the key you want to annotate.
 
-You can use backslashes to make it more readable (write the options in multiple lines).
+If you don't use the `properties` option on hashes or don't use `items` on arrays,
+it will be parsed from the values and their annotations instead.
 
 Valid options are:
 
@@ -101,75 +101,67 @@ Defaults to the comment which has no `# @schema` prefix.
 
 **items**
 
-Takes a string of possible array value types separated by `|`.
-
-Implies `type=array`.
-
-_Example:_ Array can contain string or null items: `items=string|null`
+Contains the schema that describes the possible array items.
 
 **pattern**
 
 Regex pattern to test the value.
 
-Implies `type=string`.
-
 **format**
 
 The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values.
-
-Implies `type=string`.
 
 **required**
 
 Adds the key to the required items. 
 
-Takes boolean values.
+Takes a boolean value.
 
 **deprecated**
 
 Marks the option as deprecated.
 
-Takes boolean values.
+Takes a boolean value.
 
 **examples**
 
-Some examples your can provide for the enduser. 
+Some examples you can provide for the enduser. 
 
-They must be separated by `|`
+Takes an array.
 
-**min**
+**minimum**
 
 Minimum value.
 
-Can't be used with `xmin`.
+Can't be used with `exclusiveMinimum`.
 
-Must be smaller than `max` or `xmax` (if used).
+Must be smaller than `maximum` or `exclusiveMaximum` (if used).
 
-**xmin**
+**exclusiveMinimum**
 
 Exclusive minimum.
 
-Can't be used with `min`.
+Can't be used with `minimum`.
 
-Must be smaller than `max` or `xmax` (if used).
+Must be smaller than `maximum` or `exclusiveMaximum` (if used).
 
-**max**
+**maximum**
 
 Maximum value.
 
-Can't be used with `xmax`.
+Can't be used with `exclusiveMaximum`.
 
-Must be bigger than `min` or `xmin` (if used).
+Must be bigger than `minimum` or `exclusiveMinimum` (if used).
 
-**xmax**
+**exclusiveMaximum**
 
 Exclusive maximum value.
 
-Can't be used with `max`.
+Can't be used with `maximum`.
 
-Must be bigger than `min` or `xmin` (if used).
+Must be bigger than `minimum` or `exclusiveMinimum` (if used).
 
-**multiple**
+**multipleOf**
 
 Value, the yaml-value must be a multiple of.
 
@@ -183,14 +175,14 @@ Single allowed value.
 
 Multiple allowed values.
 
-**additional**
+**additionalProperties**
 
 Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`,
 which will be filled with keys that the jsonschema can't know.
 
 Defaults to `false` if the map is not an empty map.
 
-Takes boolean values.
+Takes a boolean value.
 
 ## Example
 
@@ -201,21 +193,29 @@ This values.yaml:
 # yaml-language-server: $schema=values.schema.json
 
 # This text will be used as description.
-# @schema type=integer min=0 required=true
+# @schema
+# type: integer 
+# minimum: 0
+# required: true
+# @schema
 foo: 1
 
-# If your use multiple annotations, they are treated as an alternative (one of these must match).
-# @schema type=null
-# @schema pattern=^foo
+# If you want the value to take alternative values.
+# In this case null or some string starting with foo.
+# @schema
+# anyOf:
+#   - type: null
+#   - pattern: ^foo
+# @schema
 bar:
 
-# You can use backslashes to make it more readable.
 # If you don't use `type`, the type will be guessed from the
 # default value.
-# @schema \
-#   title=Some title \
-#   description=Some description \
-#   required=true 
+# @schema
+# title: Some title
+# description: Some description
+# required: true 
+# @schema
 baz: foo
 ```
 
@@ -223,44 +223,46 @@ Will result in this jsonschema:
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
   "properties": {
     "bar": {
-      "oneOf": [
+      "title": "bar",
+      "description": "If you want the value to take alternative values.\nIn this case null or some string starting with foo.",
+      "default": "",
+      "anyOf": [
         {
-          "default": "",
-          "description": "If your use multiple annotations, they are treated as an alternative (one of these must match).",
-          "title": "bar",
           "type": "null"
         },
         {
-          "default": "",
-          "description": "If your use multiple annotations, they are treated as an alternative (one of these must match).",
-          "pattern": "^foo",
-          "title": "bar",
-          "type": "string"
+          "pattern": "^foo"
         }
       ]
     },
     "baz": {
-      "default": "foo",
+      "title": "Some title",
       "description": "Some description",
-      "title": "Some title"
+      "default": "foo"
     },
     "foo": {
-      "default": "1",
-      "description": "This text will be used as description.",
-      "minimum": 0,
+      "type": "integer",
       "title": "foo",
-      "type": "integer"
+      "description": "This text will be used as description.",
+      "default": "1",
+      "minimum": 0
+    },
+    "global": {
+      "type": "object",
+      "title": "global",
+      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name."
     }
   },
+  "additionalProperties": false,
   "required": [
     "foo",
     "baz"
   ],
-  "type": "object"
-}
+  "$schema": "http://json-schema.org/draft-07/schema#"
+} 
 ```
 
 ## License

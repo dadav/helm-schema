@@ -8,21 +8,39 @@ func TestValidate(t *testing.T) {
 		expectedValid bool
 	}{
 		{
-			comment:       "foo",
-			expectedValid: true,
-		},
-		{
 			comment: `
-      # @schema
-      # multipleOf: true
-      # @schema`,
+# @schema
+# multipleOf: true
+# @schema`,
 			expectedValid: false,
 		},
 		{
 			comment: `
-      # @schema
-      # type: doesnotexist
-      # @schema`,
+# @schema
+# type: doesnotexist
+# @schema`,
+			expectedValid: false,
+		},
+		{
+			comment: `
+# @schema
+# type: string
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
+# format: ipv4
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
+# pattern: ^foo
+# format: ipv4
+# @schema`,
 			expectedValid: false,
 		},
 	}
@@ -41,7 +59,7 @@ func TestValidate(t *testing.T) {
 		valid := err == nil
 		if valid != test.expectedValid {
 			t.Errorf(
-				"Expected schema %s to be valid=%t, but it's %t",
+				"Expected schema\n%s\n\n to be valid=%t, but it's %t",
 				test.comment,
 				test.expectedValid,
 				valid,
