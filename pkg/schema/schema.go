@@ -2,18 +2,19 @@ package schema
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/xeipuuv/gojsonschema"
 	yaml "gopkg.in/yaml.v3"
 )
 
 const (
-	SchemaPrefix  = "# @schema "
+	SchemaPrefix  = "# @schema"
 	CommentPrefix = "# "
 )
 
@@ -28,103 +29,63 @@ const (
 	mapTag       = "!!map"
 )
 
-type SchemaAnnotation struct {
-	Type                 string
-	Title                string
-	Description          string
-	Pattern              string
-	Format               string
-	Required             bool
-	Deprecated           bool
-	Items                string
-	Enum                 string
-	Const                string
-	Examples             string
-	Minimum              *int
-	Maximum              *int
-	ExclusiveMinimum     *int
-	ExclusiveMaximum     *int
-	MultipleOf           *int
-	AdditionalProperties bool
+// Schema struct contains yaml tags for reading, json for writing (creating the jsonschema)
+type Schema struct {
+	Type                  string            `yaml:"type,omitempty"                  json:"type,omitempty"`
+	Title                 string            `yaml:"title,omitempty"                 json:"title,omitempty"`
+	Description           string            `yaml:"description,omitempty"           json:"description,omitempty"`
+	Default               interface{}       `yaml:"default,omitempty"               json:"default,omitempty"`
+	Properties            map[string]Schema `yaml:"properties,omitempty"            json:"properties,omitempty"`
+	Pattern               string            `yaml:"pattern,omitempty"               json:"pattern,omitempty"`
+	Format                string            `yaml:"format,omitempty"                json:"format,omitempty"`
+	Required              bool              `yaml:"required,omitempty"              json:"-"`
+	Deprecated            bool              `yaml:"deprecated,omitempty"            json:"deprecated,omitempty"`
+	Items                 *Schema           `yaml:"items,omitempty"                 json:"items,omitempty"`
+	Enum                  []string          `yaml:"enum,omitempty"                  json:"enum,omitempty"`
+	Const                 string            `yaml:"const,omitempty"                 json:"const,omitempty"`
+	Examples              []string          `yaml:"examples,omitempty"              json:"examples,omitempty"`
+	Minimum               *int              `yaml:"minimum,omitempty"               json:"minimum,omitempty"`
+	Maximum               *int              `yaml:"maximum,omitempty"               json:"maximum,omitempty"`
+	ExclusiveMinimum      *int              `yaml:"exclusiveMinimum,omitempty"      json:"exclusiveMinimum,omitempty"`
+	ExclusiveMaximum      *int              `yaml:"exclusiveMaximum,omitempty"      json:"exclusiveMaximum,omitempty"`
+	MultipleOf            *int              `yaml:"multipleOf,omitempty"            json:"multipleOf,omitempty"`
+	AdditionalProperties  *bool             `yaml:"additionalProperties,omitempty"  json:"additionalProperties,omitempty"`
+	RequiredProperties    []string          `yaml:"-"                               json:"required,omitempty"`
+	UnevaluatedProperties []string          `yaml:"unevaluatedProperties,omitempty" json:"unevaluatedProperties,omitempty"`
+	AnyOf                 []Schema          `yaml:"anyOf,omitempty"                 json:"anyOf,omitempty"`
+	OneOf                 []Schema          `yaml:"oneOf,omitempty"                 json:"oneOf,omitempty"`
+	AllOf                 []Schema          `yaml:"allOf,omitempty"                 json:"allOf,omitempty"`
+	If                    *Schema           `yaml:"if,omitempty"                    json:"if,omitempty"`
+	Then                  *Schema           `yaml:"then,omitempty"                  json:"then,omitempty"`
+	Else                  *Schema           `yaml:"else,omitempty"                  json:"else,omitempty"`
+	HasData               bool              `yaml:"-"                               json:"-"`
+	Ref                   string            `yaml:"$ref,omitempty"                  json:"$ref,omitempty"`
+	Schema                string            `yaml:"$schema,omitempty"               json:"$schema,omitempty"`
+	Id                    string            `yaml:"$id,omitempty"                   json:"$id,omitempty"`
 }
 
-// ToSchema converts the SchemaAnnotation struct to the final jsonschema
-func (s SchemaAnnotation) ToSchema() map[string]interface{} {
-	ret := map[string]interface{}{}
-
-	if s.Type != "" {
-		ret["type"] = s.Type
-	}
-
-	if s.Title != "" {
-		ret["title"] = s.Title
-	}
-
-	if s.Description != "" {
-		ret["description"] = s.Description
-	}
-
-	if s.Pattern != "" {
-		ret["pattern"] = s.Pattern
-	}
-
-	if s.Format != "" {
-		ret["format"] = s.Format
-	}
-
-	if s.Enum != "" {
-		ret["enum"] = strings.Split(s.Enum, "|")
-	}
-
-	if s.Examples != "" {
-		ret["examples"] = strings.Split(s.Examples, "|")
-	}
-
-	if s.Deprecated {
-		ret["deprecated"] = true
-	}
-
-	if s.Const != "" {
-		ret["const"] = s.Const
-	}
-
-	if s.Minimum != nil {
-		ret["minimum"] = *s.Minimum
-	}
-
-	if s.Maximum != nil {
-		ret["maximum"] = *s.Maximum
-	}
-
-	if s.ExclusiveMaximum != nil {
-		ret["exclusiveMaximum"] = *s.ExclusiveMaximum
-	}
-
-	if s.ExclusiveMinimum != nil {
-		ret["exclusiveMinimum"] = s.ExclusiveMinimum
-	}
-
-	if s.MultipleOf != nil {
-		ret["multipleOf"] = s.MultipleOf
-	}
-
-	if len(s.Items) > 0 {
-		items := []interface{}{}
-		for _, item := range strings.Split(s.Items, "|") {
-			items = append(items, map[string]string{"type": item})
-		}
-		ret["items"] = map[string]interface{}{"oneOf": items}
-	}
-
-	if s.AdditionalProperties {
-		ret["additionalProperties"] = s.AdditionalProperties
-	}
-
-	return ret
+func (s *Schema) Set() {
+	s.HasData = true
 }
 
-// Validate checks if there are some semantic errors in the given schema data
-func (s SchemaAnnotation) Validate() error {
+// ToJson converts the data to raw json
+func (s Schema) ToJson() ([]byte, error) {
+	res, err := json.MarshalIndent(&s, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// Validate the schema
+func (s Schema) Validate() error {
+	sl := gojsonschema.NewSchemaLoader()
+	sl.Validate = true
+
+	if err := sl.AddSchemas(gojsonschema.NewGoLoader(s)); err != nil {
+		return err
+	}
+
 	// Check if type is valid
 	if s.Type != "" &&
 		s.Type != "object" &&
@@ -152,23 +113,15 @@ func (s SchemaAnnotation) Validate() error {
 		return errors.New(fmt.Sprintf("Cant use format and pattern option at the same time"))
 	}
 
-	// Only supported types of Items are allowed
-	if s.Items != "" {
-		for _, item := range strings.Split(s.Items, "|") {
-			if item != "string" &&
-				item != "integer" &&
-				item != "object" &&
-				item != "number" &&
-				item != "boolean" &&
-				item != "array" &&
-				item != "null" {
-				return errors.New(fmt.Sprintf("Item type %s not supported", item))
-			}
+	// Validate nested Items schema
+	if s.Items != nil {
+		if err := s.Items.Validate(); err != nil {
+			return err
 		}
 	}
 
 	// If type and items are used, type must be array
-	if s.Items != "" && s.Type != "" && s.Type != "array" {
+	if s.Items != nil && s.Type != "" && s.Type != "array" {
 		return errors.New(fmt.Sprintf("Cant use items if type is %s. Use type=array", s.Type))
 	}
 
@@ -176,7 +129,7 @@ func (s SchemaAnnotation) Validate() error {
 		return errors.New("If your are using const, you can't use type")
 	}
 
-	if s.Enum != "" && s.Type != "" {
+	if s.Enum != nil && s.Type != "" {
 		return errors.New("If your are using enum, you can't use type")
 	}
 
@@ -207,30 +160,29 @@ func (s SchemaAnnotation) Validate() error {
 	}
 
 	if s.Minimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If your use min, you cant use type=%s", s.Type))
+		return errors.New(fmt.Sprintf("If you use minimum, you cant use type=%s", s.Type))
 	}
 	if s.Maximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If your use max, you cant use type=%s", s.Type))
+		return errors.New(fmt.Sprintf("If you use maximum, you cant use type=%s", s.Type))
 	}
 	if s.ExclusiveMinimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If your use xmin, you cant use type=%s", s.Type))
+		return errors.New(fmt.Sprintf("If you use exclusiveMinimum, you cant use type=%s", s.Type))
 	}
 	if s.ExclusiveMaximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If your use xmax, you cant use type=%s", s.Type))
+		return errors.New(fmt.Sprintf("If you use exclusiveMaximum, you cant use type=%s", s.Type))
 	}
 	if s.MultipleOf != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If your use multiple, you cant use type=%s", s.Type))
+		return errors.New(fmt.Sprintf("If you use multiple, you cant use type=%s", s.Type))
 	}
 	if s.MultipleOf != nil && *s.MultipleOf <= 0 {
 		return errors.New("multiple option must be greater than 0")
 	}
 	if s.Minimum != nil && s.ExclusiveMinimum != nil {
-		return errors.New("You cant set min and xmin")
+		return errors.New("You cant set minimum and exclusiveMinimum")
 	}
 	if s.Maximum != nil && s.ExclusiveMaximum != nil {
-		return errors.New("You cant set min and xmin")
+		return errors.New("You cant set minimum and exclusiveMaximum")
 	}
-
 	return nil
 }
 
@@ -256,253 +208,189 @@ func typeFromTag(tag string) (string, error) {
 	return "", errors.New(fmt.Sprintf("Unsupported yaml tag found: %s", tag))
 }
 
-func getSchemaFromLine(line string) (SchemaAnnotation, error) {
-	schema := SchemaAnnotation{}
-	pat := regexp.MustCompile(`(\w+)=([^=]*.)(?:\s|$)`)
-	matches := pat.FindAllStringSubmatch(line, -1)
-
-	seen := make(map[string]bool)
-
-	for _, match := range matches {
-		k, v := match[1], match[2]
-		if _, ok := seen[k]; ok {
-			return schema, errors.New(fmt.Sprintf("Duplicate option %s", k))
-		} else {
-			seen[k] = true
-		}
-
-		switch k {
-		case "type":
-			schema.Type = v
-		case "title":
-			schema.Title = v
-		case "description":
-			schema.Description = v
-		case "pattern":
-			schema.Pattern = v
-		case "format":
-			schema.Format = v
-		case "required":
-			schema.Required = strings.ToLower(v) == "true"
-		case "deprecated":
-			schema.Deprecated = strings.ToLower(v) == "true"
-		case "examples":
-			schema.Examples = v
-		case "enum":
-			schema.Enum = v
-		case "const":
-			schema.Const = v
-		case "items":
-			schema.Items = v
-		case "min":
-			if num, err := strconv.Atoi(v); err == nil {
-				schema.Minimum = &num
-			} else {
-				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
-			}
-		case "max":
-			if num, err := strconv.Atoi(v); err == nil {
-				schema.Maximum = &num
-			} else {
-				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
-			}
-		case "xmax":
-			if num, err := strconv.Atoi(v); err == nil {
-				schema.ExclusiveMaximum = &num
-			} else {
-				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
-			}
-		case "xmin":
-			if num, err := strconv.Atoi(v); err == nil {
-				schema.ExclusiveMinimum = &num
-			} else {
-				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
-			}
-		case "multiple":
-			if num, err := strconv.Atoi(v); err == nil {
-				schema.MultipleOf = &num
-			} else {
-				return schema, errors.New(fmt.Sprintf("Cant parse %v as int", v))
-			}
-		case "additional":
-			schema.AdditionalProperties = strings.ToLower(v) == "true"
-		default:
-			log.Warnf("Unknown schema option %s. Ignoring", k)
-		}
-	}
-
-	if err := schema.Validate(); err != nil {
-		return schema, err
-	}
-
-	if schema.Pattern != "" || schema.Format != "" {
-		schema.Type = "string"
-	}
-
-	if schema.Items != "" {
-		schema.Type = "array"
-	}
-
-	return schema, nil
-}
-
-// GetSchemasFromComment parses the annotations from the given comment
-func GetSchemasFromComment(comment string) ([]SchemaAnnotation, string, error) {
-	result := []SchemaAnnotation{}
+// GetSchemaFromComment parses the annotations from the given comment
+func GetSchemaFromComment(comment string) (Schema, string, error) {
+	var result Schema
 	scanner := bufio.NewScanner(strings.NewReader(comment))
 	description := []string{}
+	rawSchema := []string{}
+	insideSchemaBlock := false
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, SchemaPrefix) {
-			schema, err := getSchemaFromLine(strings.TrimPrefix(line, SchemaPrefix))
-			if err != nil {
-				return nil, "", err
-			}
-			result = append(result, schema)
+			insideSchemaBlock = !insideSchemaBlock
+			continue
+		}
+		if insideSchemaBlock {
+			content := strings.TrimPrefix(line, CommentPrefix)
+			rawSchema = append(rawSchema, strings.TrimPrefix(content, CommentPrefix))
+			result.Set()
 		} else {
 			description = append(description, strings.TrimPrefix(line, CommentPrefix))
 		}
 	}
+
+	if insideSchemaBlock {
+		return result, "", errors.New(
+			fmt.Sprintf("Unclosed schema block found in comment: %s", comment),
+		)
+	}
+
+	err := yaml.Unmarshal([]byte(strings.Join(rawSchema, "\n")), &result)
+	if err != nil {
+		return result, "", err
+	}
+
 	return result, strings.Join(description, "\n"), nil
 }
 
-// YamlToJsonSchema recursevly parses the given yaml.Node and creates a jsonschema from it
-func YamlToJsonSchema(
+// YamlToSchema recursevly parses the given yaml.Node and creates a jsonschema from it
+func YamlToSchema(
 	node *yaml.Node,
 	keepFullComment bool,
 	parentRequiredProperties *[]string,
-) map[string]interface{} {
-	schema := make(map[string]interface{})
-	requiredProperties := []string{}
+) Schema {
+	var schema Schema
 
 	switch node.Kind {
 	case yaml.DocumentNode:
+		log.Debug("Inside DocumentNode")
 		if len(node.Content) != 1 {
 			log.Fatalf("Strange yaml document found:\n%v\n", node.Content[:])
 		}
-		schema["$schema"] = "http://json-schema.org/schema#"
-		schema["type"] = "object"
-		schema["properties"] = YamlToJsonSchema(
+
+		requiredProperties := []string{}
+
+		schema.Type = "object"
+		schema.Schema = "http://json-schema.org/draft-07/schema#"
+		schema.Properties = YamlToSchema(
 			node.Content[0],
 			keepFullComment,
 			&requiredProperties,
-		)
+		).Properties
 
-		if _, ok := schema["properties"].(map[string]interface{})["global"]; !ok {
+		if _, ok := schema.Properties["global"]; !ok {
 			// global key must be present, otherwise helm lint will fail
-			schema["properties"].(map[string]interface{})["global"] = map[string]interface{}{
-				"type":        "object",
-				"title":       "global",
-				"description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+			if schema.Properties == nil {
+				schema.Properties = make(map[string]Schema)
+			}
+			schema.Properties["global"] = Schema{
+				Type:        "object",
+				Title:       "global",
+				Description: "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
 			}
 		}
 
 		if len(requiredProperties) > 0 {
-			schema["required"] = requiredProperties
+			schema.RequiredProperties = requiredProperties
 		}
 		// always disable on top level
-		schema["additionalProperties"] = false
+		schema.AdditionalProperties = new(bool)
 	case yaml.MappingNode:
-
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
+			log.Debugf("Checking key: %s\n", keyNode.Value)
 
-			backslashRemover := regexp.MustCompile(`\\\n\s*#\s*`)
-			comment := backslashRemover.ReplaceAllString(keyNode.HeadComment, "")
+			comment := keyNode.HeadComment
 			if !keepFullComment {
 				leadingCommentsRemover := regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
 				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
 			}
 
-			parsedSchemas, description, err := GetSchemasFromComment(comment)
+			keyNodeSchema, description, err := GetSchemaFromComment(comment)
 			if err != nil {
 				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
 			}
 
-			if len(parsedSchemas) == 1 {
-				newSchema := parsedSchemas[0].ToSchema()
-
-				if parsedSchemas[0].Required {
-					*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
+			if keyNodeSchema.HasData {
+				if err := keyNodeSchema.Validate(); err != nil {
+					log.Fatalf(
+						"Error while validating jsonschema of key %s: %v",
+						keyNode.Value,
+						err,
+					)
 				}
-
-				if _, ok := newSchema["title"]; !ok {
-					newSchema["title"] = keyNode.Value
-				}
-
-				if _, ok := newSchema["description"]; !ok {
-					newSchema["description"] = description
-				}
-
-				if _, ok := newSchema["default"]; !ok {
-					newSchema["default"] = valueNode.Value
-				}
-
-				schema[keyNode.Value] = newSchema
-			} else if len(parsedSchemas) > 1 {
-				newSchema := map[string]interface{}{}
-				oneOf := []map[string]interface{}{}
-
-				for _, s := range parsedSchemas {
-					subSchema := s.ToSchema()
-
-					if s.Required {
-						*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
-					}
-
-					if _, ok := subSchema["title"]; !ok {
-						subSchema["title"] = keyNode.Value
-					}
-
-					if _, ok := subSchema["description"]; !ok {
-						subSchema["description"] = description
-					}
-
-					if _, ok := subSchema["default"]; !ok {
-						subSchema["default"] = valueNode.Value
-					}
-
-					oneOf = append(oneOf, subSchema)
-				}
-
-				newSchema["oneOf"] = oneOf
-				schema[keyNode.Value] = newSchema
 			} else {
-				// No schemas specified, use the current value as type
 				nodeType, err := typeFromTag(valueNode.Tag)
 				if err != nil {
 					log.Fatal(err)
 				}
-
-				schema[keyNode.Value] = map[string]interface{}{
-					"type":        nodeType,
-					"title":       keyNode.Value,
-					"description": description,
-					"default":     valueNode.Value,
-				}
+				keyNodeSchema.Type = nodeType
 			}
 
-			if valueNode.Kind == yaml.MappingNode {
-				schema[keyNode.Value].(map[string]interface{})["properties"] = YamlToJsonSchema(
+			// Add key to required array of parent
+			if keyNodeSchema.Required || !keyNodeSchema.HasData {
+				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
+			}
+
+			if valueNode.Kind == yaml.MappingNode &&
+				(!keyNodeSchema.HasData || keyNodeSchema.AdditionalProperties == nil) {
+				keyNodeSchema.AdditionalProperties = new(bool)
+			}
+
+			// If no title was set, use the key value
+			if keyNodeSchema.Title == "" {
+				keyNodeSchema.Title = keyNode.Value
+			}
+
+			// If no description was set, use the rest of the comment as description
+			if keyNodeSchema.Description == "" {
+				keyNodeSchema.Description = description
+			}
+
+			// If no default value was set, use the values node value as default
+			if keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
+				keyNodeSchema.Default = valueNode.Value
+			}
+
+			// If the value is another map and no properties are set, get them from default values
+			// TODO: also consider allOf, anyOf and oneOf
+			if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
+				requiredProperties := []string{}
+				keyNodeSchema.Properties = YamlToSchema(
 					valueNode,
 					keepFullComment,
 					&requiredProperties,
-				)
+				).Properties
 				if len(requiredProperties) > 0 {
-					schema[keyNode.Value].(map[string]interface{})["required"] = requiredProperties
+					keyNodeSchema.RequiredProperties = requiredProperties
 				}
-				if _, ok := schema[keyNode.Value].(map[string]interface{})["additionalProperties"]; !ok {
-					// disable if not explicitly enabled via option
-					// and if any properties are set
-					if len(
-						schema[keyNode.Value].(map[string]interface{})["properties"].(map[string]interface{}),
-					) > 0 {
-						// if no properties are set
-						schema[keyNode.Value].(map[string]interface{})["additionalProperties"] = false
+			} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
+				// If the value is a sequence, but no items are predefined
+				// TODO: also consider allOf, anyOf and oneOf
+				var seqSchema Schema
+
+				for _, itemNode := range valueNode.Content {
+					if itemNode.Kind == yaml.ScalarNode {
+						itemNodeType, err := typeFromTag(itemNode.Tag)
+						if err != nil {
+							log.Fatal(err)
+						}
+						seqSchema.AnyOf = append(seqSchema.AnyOf, Schema{Type: itemNodeType})
+					} else {
+						itemRequiredProperties := []string{}
+						itemSchema := YamlToSchema(itemNode, keepFullComment, &itemRequiredProperties)
+
+						if len(itemRequiredProperties) > 0 {
+							itemSchema.RequiredProperties = itemRequiredProperties
+						}
+
+						// here
+						if itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
+							itemSchema.AdditionalProperties = new(bool)
+						}
+
+						seqSchema.AnyOf = append(seqSchema.AnyOf, itemSchema)
 					}
 				}
+				keyNodeSchema.Items = &seqSchema
 			}
+			if schema.Properties == nil {
+				schema.Properties = make(map[string]Schema)
+			}
+			schema.Properties[keyNode.Value] = keyNodeSchema
 		}
 	}
 

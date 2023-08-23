@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -43,12 +42,12 @@ type Result struct {
 	ChartPath  string
 	ValuesPath string
 	Chart      *chart.ChartFile
-	Schema     map[string]interface{}
+	Schema     schema.Schema
 	Errors     []error
 }
 
 func worker(
-	dryRun, skipDeps, useRef, keepFullComment bool,
+	dryRun, keepFullComment bool,
 	valueFileNames []string,
 	outFile string,
 	queue <-chan string,
@@ -121,22 +120,8 @@ func worker(
 			continue
 		}
 
-		mainSchema := schema.YamlToJsonSchema(&values, keepFullComment, nil)
+		mainSchema := schema.YamlToSchema(&values, keepFullComment, nil)
 		result.Schema = mainSchema
-
-		if !skipDeps {
-			for _, dep := range chart.Dependencies {
-				if depName, ok := dep["name"].(string); ok {
-					if useRef {
-						mainSchema["properties"].(map[string]interface{})[depName] = map[string]string{
-							"title":       chart.Name,
-							"description": chart.Description,
-							"$ref":        fmt.Sprintf("charts/%s/%s", depName, outFile),
-						}
-					}
-				}
-			}
-		}
 
 		results <- result
 	}
@@ -147,7 +132,6 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 	chartSearchRoot := viper.GetString("chart-search-root")
 	dryRun := viper.GetBool("dry-run")
-	useRef := viper.GetBool("use-references")
 	noDeps := viper.GetBool("no-dependencies")
 	keepFullComment := viper.GetBool("keep-full-comment")
 	outFile := viper.GetString("output-file")
@@ -177,8 +161,6 @@ func exec(cmd *cobra.Command, _ []string) error {
 			defer wg.Done()
 			worker(
 				dryRun,
-				noDeps,
-				useRef,
 				keepFullComment,
 				valueFileNames,
 				outFile,
@@ -203,7 +185,7 @@ loop:
 
 	// Sort results if dependencies should be processed
 	// Need to resolve the dependencies from deepest level to highest
-	if !noDeps && !useRef {
+	if !noDeps {
 		sort.Slice(results, func(i, j int) bool {
 			first := results[i]
 			second := results[j]
@@ -250,16 +232,15 @@ loop:
 			continue
 		}
 
-		// Embed dependencies if needed
-		if !noDeps && !useRef {
+		if !noDeps {
 			for _, dep := range result.Chart.Dependencies {
 				if depName, ok := dep["name"].(string); ok {
 					if dependencyResult, ok := chartNameToResult[depName]; ok {
-						result.Schema["properties"].(map[string]interface{})[depName] = map[string]interface{}{
-							"type":        "object",
-							"title":       depName,
-							"description": dependencyResult.Chart.Description,
-							"properties":  dependencyResult.Schema["properties"],
+						result.Schema.Properties[depName] = schema.Schema{
+							Type:        "object",
+							Title:       depName,
+							Description: dependencyResult.Chart.Description,
+							Properties:  dependencyResult.Schema.Properties,
 						}
 					}
 				}
@@ -268,7 +249,7 @@ loop:
 		}
 
 		// Print to stdout or write to file
-		jsonStr, err := json.MarshalIndent(result.Schema, "", "  ")
+		jsonStr, err := result.Schema.ToJson()
 		if err != nil {
 			log.Error(err)
 			continue
@@ -286,7 +267,7 @@ loop:
 		}
 	}
 	if foundErrors {
-		return errors.New("foo")
+		return errors.New("Some errors were found")
 	}
 	return nil
 }

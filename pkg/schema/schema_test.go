@@ -8,33 +8,45 @@ func TestValidate(t *testing.T) {
 		expectedValid bool
 	}{
 		{
-			comment:       "foo",
+			comment: `
+# @schema
+# multipleOf: true
+# @schema`,
 			expectedValid: false,
 		},
 		{
-			comment:       "# @schema type=string",
+			comment: `
+# @schema
+# type: doesnotexist
+# @schema`,
+			expectedValid: false,
+		},
+		{
+			comment: `
+# @schema
+# type: string
+# @schema`,
 			expectedValid: true,
 		},
 		{
-			comment:       "# @schema type=string type=integer",
-			expectedValid: false,
+			comment: `
+# @schema
+# format: ipv4
+# @schema`,
+			expectedValid: true,
 		},
 		{
-			comment:       "# @schema type=string min=1",
-			expectedValid: false,
-		},
-		{
-			comment:       "# @schema type=object min=1",
-			expectedValid: false,
-		},
-		{
-			comment:       "# @schema type=doesntexist",
+			comment: `
+# @schema
+# pattern: ^foo
+# format: ipv4
+# @schema`,
 			expectedValid: false,
 		},
 	}
 
 	for _, test := range tests {
-		schemas, _, err := GetSchemasFromComment(test.comment)
+		schema, _, err := GetSchemaFromComment(test.comment)
 		if err != nil && test.expectedValid {
 			t.Errorf(
 				"Expected the schema %s to be valid=%t, but can't even parse it: %v",
@@ -43,18 +55,15 @@ func TestValidate(t *testing.T) {
 				err,
 			)
 		}
-		for i, schema := range schemas {
-			err := schema.Validate()
-			valid := err == nil
-			if valid != test.expectedValid {
-				t.Errorf(
-					"Expected schema %s (number %d) to be valid=%t, but it's %t",
-					test.comment,
-					i,
-					test.expectedValid,
-					valid,
-				)
-			}
+		err = schema.Validate()
+		valid := err == nil
+		if valid != test.expectedValid {
+			t.Errorf(
+				"Expected schema\n%s\n\n to be valid=%t, but it's %t",
+				test.comment,
+				test.expectedValid,
+				valid,
+			)
 		}
 	}
 }
