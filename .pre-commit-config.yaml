@@ -1,6 +1,6 @@
 ---
 repos:
   - repo: https://github.com/dadav/helm-schema
-    rev: 0.2.0
+    rev: 0.3.0
     hooks:
       - id: helm-schema
