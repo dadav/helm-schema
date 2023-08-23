@@ -49,7 +49,7 @@ type Schema struct {
 	ExclusiveMinimum      int               `yaml:"exclusiveMinimum,omitempty"      json:"exclusiveMinimum,omitempty"`
 	ExclusiveMaximum      int               `yaml:"exclusiveMaximum,omitempty"      json:"exclusiveMaximum,omitempty"`
 	MultipleOf            int               `yaml:"multipleOf,omitempty"            json:"multipleOf,omitempty"`
-	AdditionalProperties  bool              `yaml:"additionalProperties,omitempty"  json:"additionalProperties,omitempty"`
+	AdditionalProperties  *bool             `yaml:"additionalProperties,omitempty"  json:"additionalProperties,omitempty"`
 	RequiredProperties    []string          `yaml:"-"                               json:"required,omitempty"`
 	UnevaluatedProperties []string          `yaml:"unevaluatedProperties,omitempty" json:"unevaluatedProperties,omitempty"`
 	AnyOf                 []Schema          `yaml:"anyOf,omitempty"                 json:"anyOf,omitempty"`
@@ -184,7 +184,7 @@ func YamlToSchema(
 			schema.RequiredProperties = requiredProperties
 		}
 		// always disable on top level
-		schema.AdditionalProperties = false
+		schema.AdditionalProperties = new(bool)
 	case yaml.MappingNode:
 		log.Debug("Inside MappingNode")
 		for i := 0; i < len(node.Content); i += 2 {
@@ -203,60 +203,80 @@ func YamlToSchema(
 				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
 			}
 
-			if err := valueSchema.Validate(); err != nil {
-				log.Fatalf("Error while validating jsonschema of key %s: %v", keyNode.Value, err)
-			}
-
-			// No schemas specified, use the current value as type
-			nodeType, err := typeFromTag(valueNode.Tag)
-			if err != nil {
-				log.Fatal(err)
-			}
-
 			if valueSchema.HasData {
-				// Add key to required array of parent
-				if valueSchema.Required {
-					*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
+				if err := valueSchema.Validate(); err != nil {
+					log.Fatalf("Error while validating jsonschema of key %s: %v", keyNode.Value, err)
 				}
+			}
 
-				// If no title was set, use the key value
-				if valueSchema.Title == "" {
-					valueSchema.Title = keyNode.Value
+			if valueSchema.Type == "" {
+				nodeType, err := typeFromTag(valueNode.Tag)
+				if err != nil {
+					log.Fatal(err)
 				}
+				valueSchema.Type = nodeType
+			}
 
-				// If no description was set, use the rest of the comment as description
-				if valueSchema.Description == "" {
-					valueSchema.Description = description
-				}
+			// Add key to required array of parent
+			if valueSchema.Required || !valueSchema.HasData {
+				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
+			}
 
-				// If no default value was set, use the values node value as default
-				if valueSchema.Default == nil {
-					valueSchema.Default = valueNode.Value
-				}
-			} else {
-				valueSchema = Schema{
-					Type:        nodeType,
-					Title:       keyNode.Value,
-					Description: description,
-					Default:     valueNode.Value,
-				}
+			if valueNode.Kind == yaml.MappingNode && (!valueSchema.HasData || valueSchema.AdditionalProperties == nil) {
+				valueSchema.AdditionalProperties = new(bool)
+			}
+
+			// If no title was set, use the key value
+			if valueSchema.Title == "" {
+				valueSchema.Title = keyNode.Value
+			}
+
+			// If no description was set, use the rest of the comment as description
+			if valueSchema.Description == "" {
+				valueSchema.Description = description
+			}
+
+			// If no default value was set, use the values node value as default
+			if valueSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
+				valueSchema.Default = valueNode.Value
 			}
 
 			// If the value is another map and no properties are set, get them from default values
 			if valueNode.Kind == yaml.MappingNode && valueSchema.Properties == nil {
-				valueSchema.Properties = make(map[string]Schema)
-				valueSchema.Properties[keyNode.Value] = YamlToSchema(
+				valueSchema.Properties = YamlToSchema(
 					valueNode,
 					keepFullComment,
 					&requiredProperties,
-				)
+				).Properties
+				if len(requiredProperties) > 0 {
+					valueSchema.RequiredProperties = requiredProperties
+				}
 			} else if valueNode.Kind == yaml.SequenceNode && valueSchema.Items == nil {
-				log.Debug("Value is Sequence...Checking Items")
 				// If the value is a sequence, but no items are predefined
 				var seqSchema Schema
 
 				for _, itemNode := range valueNode.Content {
-					seqSchema.OneOf = append(seqSchema.OneOf, YamlToSchema(itemNode, keepFullComment, &requiredProperties))
+					if itemNode.Kind == yaml.ScalarNode {
+						itemNodeType, err := typeFromTag(itemNode.Tag)
+						if err != nil {
+							log.Fatal(err)
+						}
+						seqSchema.AnyOf = append(seqSchema.AnyOf, Schema{Type: itemNodeType})
+					} else {
+						itemRequiredProperties := []string{}
+						itemSchema := YamlToSchema(itemNode, keepFullComment, &itemRequiredProperties)
+
+						if len(itemRequiredProperties) > 0 {
+							itemSchema.RequiredProperties = itemRequiredProperties
+						}
+
+						// here
+						if itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
+							itemSchema.AdditionalProperties = new(bool)
+						}
+
+						seqSchema.AnyOf = append(seqSchema.AnyOf, itemSchema)
+					}
 				}
 				valueSchema.Items = &seqSchema
 			}
