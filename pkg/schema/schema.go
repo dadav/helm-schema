@@ -71,7 +71,7 @@ func (s *Schema) Set() {
 
 // DisableRequiredProperties sets all RequiredProperties in this schema to an empty slice
 func (s *Schema) DisableRequiredProperties() {
-	s.RequiredProperties = []string{}
+	s.RequiredProperties = nil
 	for _, v := range s.Properties {
 		v.DisableRequiredProperties()
 	}
