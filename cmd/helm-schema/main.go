@@ -245,7 +245,7 @@ loop:
 						depSchema.DisableRequiredProperties()
 						result.Schema.Properties[depName] = depSchema
 					} else {
-						log.Warnf("Dependency (%s) specified but no schema found (maybe dependencies are still in tarball?).", depName)
+						log.Warnf("Dependency (%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dependency build & untar the charts.", depName)
 					}
 				} else {
 					log.Warnf("Dependency without name found (checkout %s).", result.ChartPath)
