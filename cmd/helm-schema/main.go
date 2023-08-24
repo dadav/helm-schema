@@ -120,8 +120,7 @@ func worker(
 			continue
 		}
 
-		mainSchema := schema.YamlToSchema(&values, keepFullComment, nil)
-		result.Schema = mainSchema
+		result.Schema = schema.YamlToSchema(&values, keepFullComment, nil)
 
 		results <- result
 	}
@@ -236,13 +235,20 @@ loop:
 			for _, dep := range result.Chart.Dependencies {
 				if depName, ok := dep["name"].(string); ok {
 					if dependencyResult, ok := chartNameToResult[depName]; ok {
-						result.Schema.Properties[depName] = schema.Schema{
+						depSchema := schema.Schema{
 							Type:        "object",
 							Title:       depName,
 							Description: dependencyResult.Chart.Description,
 							Properties:  dependencyResult.Schema.Properties,
 						}
+						// does not work, why tho?
+						depSchema.DisableRequiredProperties()
+						result.Schema.Properties[depName] = depSchema
+					} else {
+						log.Warnf("Dependency (%s) specified but no schema found (maybe dependencies are still in tarball?).", depName)
 					}
+				} else {
+					log.Warnf("Dependency without name found (checkout %s).", result.ChartPath)
 				}
 			}
 			chartNameToResult[result.Chart.Name] = result

@@ -204,7 +204,7 @@ foo: 1
 # In this case null or some string starting with foo.
 # @schema
 # anyOf:
-#   - type: null
+#   - type: "null"
 #   - pattern: ^foo
 # @schema
 bar:
@@ -264,6 +264,16 @@ Will result in this jsonschema:
   "$schema": "http://json-schema.org/draft-07/schema#"
 } 
 ```
+
+## Dependencies
+
+Per default, `helm-schema` will try to also create the schemas for the dependencies in the charts
+directory. These schemas will be added as properties in the main schema, but the
+`requiredProperties` field will be emptied. Otherwise you would have to always overwrite all the
+required fields.
+
+If you don't want this behaviour, you can also use the `-n` option to deactivate the dependency
+schema embedding.
 
 ## License
 

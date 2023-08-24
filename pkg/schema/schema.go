@@ -64,8 +64,45 @@ type Schema struct {
 	Id                    string            `yaml:"$id,omitempty"                   json:"$id,omitempty"`
 }
 
+// Set sets the HasData field to true
 func (s *Schema) Set() {
 	s.HasData = true
+}
+
+// DisableRequiredProperties sets all RequiredProperties in this schema to an empty slice
+func (s *Schema) DisableRequiredProperties() {
+	s.RequiredProperties = []string{}
+	for _, v := range s.Properties {
+		v.DisableRequiredProperties()
+	}
+	if s.Items != nil {
+		s.Items.DisableRequiredProperties()
+	}
+
+	if s.AnyOf != nil {
+		for _, v := range s.AnyOf {
+			v.DisableRequiredProperties()
+		}
+	}
+	if s.OneOf != nil {
+		for _, v := range s.OneOf {
+			v.DisableRequiredProperties()
+		}
+	}
+	if s.AllOf != nil {
+		for _, v := range s.AllOf {
+			v.DisableRequiredProperties()
+		}
+	}
+	if s.If != nil {
+		s.If.DisableRequiredProperties()
+	}
+	if s.Else != nil {
+		s.Else.DisableRequiredProperties()
+	}
+	if s.Then != nil {
+		s.Then.DisableRequiredProperties()
+	}
 }
 
 // ToJson converts the data to raw json
@@ -255,7 +292,6 @@ func YamlToSchema(
 
 	switch node.Kind {
 	case yaml.DocumentNode:
-		log.Debug("Inside DocumentNode")
 		if len(node.Content) != 1 {
 			log.Fatalf("Strange yaml document found:\n%v\n", node.Content[:])
 		}
@@ -291,7 +327,6 @@ func YamlToSchema(
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
-			log.Debugf("Checking key: %s\n", keyNode.Value)
 
 			comment := keyNode.HeadComment
 			if !keepFullComment {
