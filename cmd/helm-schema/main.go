@@ -231,10 +231,16 @@ loop:
 			continue
 		}
 
+		log.Debugf("Processing result for chart: %s (%s)", result.Chart.Name, result.ChartPath)
 		if !noDeps {
 			for _, dep := range result.Chart.Dependencies {
 				if depName, ok := dep["name"].(string); ok {
 					if dependencyResult, ok := chartNameToResult[depName]; ok {
+						log.Debugf(
+							"Found chart of dependency %s (%s)",
+							dependencyResult.Chart.Name,
+							dependencyResult.ChartPath,
+						)
 						depSchema := schema.Schema{
 							Type:        "object",
 							Title:       depName,
@@ -243,7 +249,7 @@ loop:
 						}
 						// does not work, why tho?
 						depSchema.DisableRequiredProperties()
-						result.Schema.Properties[depName] = depSchema
+						result.Schema.Properties[depName] = &depSchema
 					} else {
 						log.Warnf("Dependency (%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dependency build & untar the charts.", depName)
 					}
