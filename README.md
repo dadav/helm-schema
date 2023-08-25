@@ -22,8 +22,16 @@ will be created.
 
 ## Installation
 
+Via go install:
+
 ```bash
 go install github.com/dadav/helm-schema/cmd/helm-schema@latest
+```
+
+From aur:
+
+```bash
+paru -S helm-schema
 ```
 
 ## Usage
