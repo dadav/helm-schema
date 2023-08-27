@@ -43,6 +43,31 @@ func TestValidate(t *testing.T) {
 # @schema`,
 			expectedValid: false,
 		},
+		{
+			comment: `
+# @schema
+# anyOf:
+#   - type: "null"
+#   - format: date-time
+#   - format: date
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
+# anyOf:
+#   - type: "null"
+#   - format: date-time
+# if:
+#   type: "null"
+# then:
+#   description: If set to null, this will do nothing
+# else:
+#   description: Here goes the description for date-time
+# @schema`,
+			expectedValid: true,
+		},
 	}
 
 	for _, test := range tests {
