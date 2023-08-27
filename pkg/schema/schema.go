@@ -116,10 +116,15 @@ func (s Schema) ToJson() ([]byte, error) {
 
 // Validate the schema
 func (s Schema) Validate() error {
+	jsonStr, err := s.ToJson()
+	if err != nil {
+		return err
+	}
+
 	sl := gojsonschema.NewSchemaLoader()
 	sl.Validate = true
 
-	if err := sl.AddSchemas(gojsonschema.NewGoLoader(s)); err != nil {
+	if err := sl.AddSchemas(gojsonschema.NewStringLoader(string(jsonStr))); err != nil {
 		return err
 	}
 
