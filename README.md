@@ -198,13 +198,13 @@ This values.yaml:
 
 ```yaml
 ---
+# vim: set ft=yaml:
 # yaml-language-server: $schema=values.schema.json
 
 # This text will be used as description.
 # @schema
 # type: integer 
 # minimum: 0
-# required: true
 # @schema
 foo: 1
 
@@ -217,60 +217,47 @@ foo: 1
 # @schema
 bar:
 
-# If you don't use `type`, the type will be guessed from the
-# default value.
+# If you don't use `type`, the current value type will be used.
 # @schema
 # title: Some title
 # description: Some description
-# required: true 
 # @schema
 baz: foo
-```
 
-Will result in this jsonschema:
+# By default every property is a required property,
+# you can disable this with `required=false`
+# @schema
+# required: false
+# @schema
+bax: foo
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "bar": {
-      "title": "bar",
-      "description": "If you want the value to take alternative values.\nIn this case null or some string starting with foo.",
-      "default": "",
-      "anyOf": [
-        {
-          "type": "null"
-        },
-        {
-          "pattern": "^foo"
-        }
-      ]
-    },
-    "baz": {
-      "title": "Some title",
-      "description": "Some description",
-      "default": "foo"
-    },
-    "foo": {
-      "type": "integer",
-      "title": "foo",
-      "description": "This text will be used as description.",
-      "default": "1",
-      "minimum": 0
-    },
-    "global": {
-      "type": "object",
-      "title": "global",
-      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name."
-    }
-  },
-  "additionalProperties": false,
-  "required": [
-    "foo",
-    "baz"
-  ],
-  "$schema": "http://json-schema.org/draft-07/schema#"
-} 
+# You can also use conditional settings with if/then/else
+# @schema
+# anyOf:
+#   - type: "null"
+#   - type: string
+# if:
+#   type: "null"
+# then:
+#   description: It's a null value
+# else:
+#   description: It's a string
+# @schema
+bay:
+
+# If you want to specify a schema for possible array values without using a default value,
+# do it like this:
+# @schema
+# type: array
+# items:
+#   type: object
+#   properties:
+#     foo:
+#       type: integer
+#     bar:
+#       type: string
+# @schema
+baz: []
 ```
 
 ## Dependencies
@@ -280,8 +267,7 @@ directory. These schemas will be added as properties in the main schema, but the
 `requiredProperties` field will be emptied. Otherwise you would have to always overwrite all the
 required fields.
 
-If you don't want this behaviour, you can also use the `-n` option to deactivate the dependency
-schema embedding.
+If you don't want to generate jsonschemas for dependencies, you can use the `-n` option.
 
 ## License
 
