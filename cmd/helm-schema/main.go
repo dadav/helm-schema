@@ -247,7 +247,6 @@ loop:
 							Description: dependencyResult.Chart.Description,
 							Properties:  dependencyResult.Schema.Properties,
 						}
-						// does not work, why tho?
 						depSchema.DisableRequiredProperties()
 						result.Schema.Properties[depName] = &depSchema
 					} else {
