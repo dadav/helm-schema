@@ -7,10 +7,16 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
+type Dependency struct {
+	Name      string `yaml:"name"`
+	Version   string `yaml:"version"`
+	Condition string `yaml:"condition"`
+}
+
 type ChartFile struct {
-	Name         string                   `yaml:"name"`
-	Description  string                   `yaml:"description"`
-	Dependencies []map[string]interface{} `yaml:"dependencies"`
+	Name         string       `yaml:"name"`
+	Description  string       `yaml:"description"`
+	Dependencies []Dependency `yaml:"dependencies"`
 }
 
 // ReadChart parses the given yaml into a ChartFile struct

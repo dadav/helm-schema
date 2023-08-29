@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/dadav/helm-schema/pkg/chart"
@@ -182,6 +183,7 @@ loop:
 		}
 	}
 
+	conditionsToPatch := make(map[string][]string)
 	// Sort results if dependencies should be processed
 	// Need to resolve the dependencies from deepest level to highest
 	if !noDeps {
@@ -195,8 +197,8 @@ loop:
 			}
 			// First is dependency of second
 			for _, dep := range second.Chart.Dependencies {
-				if name, ok := dep["name"]; ok {
-					if name == first.Chart.Name {
+				if dep.Name != "" {
+					if dep.Name == first.Chart.Name {
 						return true
 					}
 				}
@@ -205,6 +207,19 @@ loop:
 			// first comes after second
 			return false
 		})
+
+		// Iterate over deps to find conditions we need to patch
+		for _, result := range results {
+			if len(result.Errors) > 0 {
+				continue
+			}
+			for _, dep := range result.Chart.Dependencies {
+				if dep.Condition != "" {
+					conditionKeys := strings.Split(dep.Condition, ".")
+					conditionsToPatch[conditionKeys[0]] = conditionKeys[1:]
+				}
+			}
+		}
 	}
 
 	chartNameToResult := make(map[string]Result)
@@ -233,9 +248,36 @@ loop:
 
 		log.Debugf("Processing result for chart: %s (%s)", result.Chart.Name, result.ChartPath)
 		if !noDeps {
+			// Patch condition into schema if needed
+			if patch, ok := conditionsToPatch[result.Chart.Name]; ok {
+				schemaToPatch := &result.Schema
+				lastIndex := len(patch) - 1
+				for i, key := range patch {
+					if alreadyPresentSchema, ok := schemaToPatch.Properties[key]; !ok {
+						log.Debugf(
+							"Patching conditional field \"%s\" into schema of chart %s",
+							key,
+							result.Chart.Name,
+						)
+						if i == lastIndex {
+							schemaToPatch.Properties[key] = &schema.Schema{
+								Type:        "boolean",
+								Title:       key,
+								Description: "Conditional property used in parent chart",
+							}
+						} else {
+							schemaToPatch.Properties[key] = &schema.Schema{Type: "object", Title: key}
+							schemaToPatch = schemaToPatch.Properties[key]
+						}
+					} else {
+						schemaToPatch = alreadyPresentSchema
+					}
+				}
+			}
+
 			for _, dep := range result.Chart.Dependencies {
-				if depName, ok := dep["name"].(string); ok {
-					if dependencyResult, ok := chartNameToResult[depName]; ok {
+				if dep.Name != "" {
+					if dependencyResult, ok := chartNameToResult[dep.Name]; ok {
 						log.Debugf(
 							"Found chart of dependency %s (%s)",
 							dependencyResult.Chart.Name,
@@ -243,14 +285,14 @@ loop:
 						)
 						depSchema := schema.Schema{
 							Type:        "object",
-							Title:       depName,
+							Title:       dep.Name,
 							Description: dependencyResult.Chart.Description,
 							Properties:  dependencyResult.Schema.Properties,
 						}
 						depSchema.DisableRequiredProperties()
-						result.Schema.Properties[depName] = &depSchema
+						result.Schema.Properties[dep.Name] = &depSchema
 					} else {
-						log.Warnf("Dependency (%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dependency build & untar the charts.", depName)
+						log.Warnf("Dependency (%s->%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dependency build & untar the charts.", result.Chart.Name, dep.Name)
 					}
 				} else {
 					log.Warnf("Dependency without name found (checkout %s).", result.ChartPath)

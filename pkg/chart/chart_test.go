@@ -26,7 +26,7 @@ func TestReadChartFile(t *testing.T) {
 	if len(c.Dependencies) != 1 {
 		t.Errorf("Expected to find one dependency, but got %d", len(c.Dependencies))
 	}
-	if c.Dependencies[0]["name"] != "test" {
-		t.Errorf("Expected Dependency name was test, but got %v", c.Dependencies[0]["name"])
+	if c.Dependencies[0].Name != "test" {
+		t.Errorf("Expected Dependency name was test, but got %v", c.Dependencies[0].Name)
 	}
 }
