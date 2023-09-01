@@ -12,7 +12,6 @@ import (
 	"github.com/dadav/helm-schema/pkg/chart"
 	"github.com/dadav/helm-schema/pkg/schema"
 	"github.com/dadav/helm-schema/pkg/util"
-	mapset "github.com/deckarep/golang-set/v2"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -45,53 +44,6 @@ type Result struct {
 	Chart      *chart.ChartFile
 	Schema     schema.Schema
 	Errors     []error
-}
-
-// sortResults sorts the given Results via topology algorithm
-// see: https://dnaeon.github.io/dependency-graph-resolution-algorithm-in-go/
-func sortResults(results []*Result) ([]*Result, error) {
-	depNamesToResults := make(map[string]*Result)
-	depNamesToNames := make(map[string]mapset.Set[string])
-
-	for _, result := range results {
-		depNamesToResults[result.Chart.Name] = result
-		dependencySet := mapset.NewSet[string]()
-		for _, dep := range result.Chart.Dependencies {
-			dependencySet.Add(dep.Name)
-		}
-		depNamesToNames[result.Chart.Name] = dependencySet
-	}
-
-	var sorted []*Result
-
-	for len(depNamesToNames) != 0 {
-		readySet := mapset.NewSet[string]()
-		for name, deps := range depNamesToNames {
-			if deps.Cardinality() == 0 {
-				readySet.Add(name)
-			}
-		}
-
-		if readySet.Cardinality() == 0 {
-			var g []*Result
-			for name := range depNamesToNames {
-				g = append(g, depNamesToResults[name])
-			}
-
-			return g, errors.New("Circular dependency found")
-		}
-
-		for name := range readySet.Iter() {
-			delete(depNamesToNames, name)
-			sorted = append(sorted, depNamesToResults[name])
-		}
-
-		for name, deps := range depNamesToNames {
-			diff := deps.Difference(readySet)
-			depNamesToNames[name] = diff
-		}
-	}
-	return sorted, nil
 }
 
 func worker(
@@ -231,7 +183,18 @@ loop:
 	}
 
 	// sort results with topology sort
-	results, err := sortResults(results)
+	results, err := util.TopSort[*Result, string](results, func(i *Result) string {
+		return i.Chart.Name
+	},
+		func(d *Result) []string {
+			deps := []string{}
+			for _, dep := range d.Chart.Dependencies {
+				deps = append(deps, dep.Name)
+			}
+			return deps
+		},
+	)
+
 	if err != nil {
 		log.Errorf("Error while sorting results: %s", err)
 		return err
