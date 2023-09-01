@@ -3,6 +3,7 @@ module github.com/dadav/helm-schema
 go 1.21.0
 
 require (
+	github.com/deckarep/golang-set/v2 v2.3.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.16.0

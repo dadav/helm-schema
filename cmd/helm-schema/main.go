@@ -6,13 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 
 	"github.com/dadav/helm-schema/pkg/chart"
 	"github.com/dadav/helm-schema/pkg/schema"
 	"github.com/dadav/helm-schema/pkg/util"
+	mapset "github.com/deckarep/golang-set/v2"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -45,6 +45,53 @@ type Result struct {
 	Chart      *chart.ChartFile
 	Schema     schema.Schema
 	Errors     []error
+}
+
+// sortResults sorts the given Results via topology algorithm
+// see: https://dnaeon.github.io/dependency-graph-resolution-algorithm-in-go/
+func sortResults(results []*Result) ([]*Result, error) {
+	depNamesToResults := make(map[string]*Result)
+	depNamesToNames := make(map[string]mapset.Set[string])
+
+	for _, result := range results {
+		depNamesToResults[result.Chart.Name] = result
+		dependencySet := mapset.NewSet[string]()
+		for _, dep := range result.Chart.Dependencies {
+			dependencySet.Add(dep.Name)
+		}
+		depNamesToNames[result.Chart.Name] = dependencySet
+	}
+
+	var sorted []*Result
+
+	for len(depNamesToNames) != 0 {
+		readySet := mapset.NewSet[string]()
+		for name, deps := range depNamesToNames {
+			if deps.Cardinality() == 0 {
+				readySet.Add(name)
+			}
+		}
+
+		if readySet.Cardinality() == 0 {
+			var g []*Result
+			for name := range depNamesToNames {
+				g = append(g, depNamesToResults[name])
+			}
+
+			return g, errors.New("Circular dependency found")
+		}
+
+		for name := range readySet.Iter() {
+			delete(depNamesToNames, name)
+			sorted = append(sorted, depNamesToResults[name])
+		}
+
+		for name, deps := range depNamesToNames {
+			diff := deps.Difference(readySet)
+			depNamesToNames[name] = diff
+		}
+	}
+	return sorted, nil
 }
 
 func worker(
@@ -141,7 +188,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	// 1. Start a producer that searches Chart.yaml and values.yaml files
 	queue := make(chan string)
 	resultsChan := make(chan Result)
-	results := []Result{}
+	results := []*Result{}
 	errs := make(chan error)
 	done := make(chan struct{})
 
@@ -176,39 +223,26 @@ loop:
 		case err := <-errs:
 			log.Error(err)
 		case res := <-resultsChan:
-			results = append(results, res)
+			results = append(results, &res)
 		case <-done:
 			break loop
 
 		}
 	}
 
+	// sort results with topology sort
+	results, err := sortResults(results)
+	if err != nil {
+		log.Errorf("Error while sorting results: %s", err)
+		return err
+	}
+
 	conditionsToPatch := make(map[string][]string)
 	// Sort results if dependencies should be processed
 	// Need to resolve the dependencies from deepest level to highest
+
 	if !noDeps {
-		sort.Slice(results, func(i, j int) bool {
-			first := results[i]
-			second := results[j]
-
-			// No dependencies
-			if len(first.Chart.Dependencies) == 0 {
-				return true
-			}
-			// First is dependency of second
-			for _, dep := range second.Chart.Dependencies {
-				if dep.Name != "" {
-					if dep.Name == first.Chart.Name {
-						return true
-					}
-				}
-			}
-
-			// first comes after second
-			return false
-		})
-
-		// Iterate over deps to find conditions we need to patch
+		// Iterate over deps to find conditions we need to patch (dependencies that have a condition)
 		for _, result := range results {
 			if len(result.Errors) > 0 {
 				continue
@@ -222,7 +256,7 @@ loop:
 		}
 	}
 
-	chartNameToResult := make(map[string]Result)
+	chartNameToResult := make(map[string]*Result)
 	foundErrors := false
 
 	// process results
