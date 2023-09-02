@@ -35,7 +35,7 @@ func TopSort[R any, I comparable](results []R, identify func(i R) I, dependencie
 				g = append(g, depNamesToResults[name])
 			}
 
-			return g, errors.New("Circular dependency found")
+			return g, errors.New("Circular or missing dependency found")
 		}
 
 		for name := range readySet.Iter() {
