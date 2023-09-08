@@ -20,6 +20,8 @@ The first files found will be read and a jsonschema will be created.
 For every dependency defined in the Chart.yaml file, a reference to the dependencies jsonschema
 will be created.
 
+The tool uses jsonschema `draft/2020-12`.
+
 ## Installation
 
 Via go install:

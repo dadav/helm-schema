@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
 	log "github.com/sirupsen/logrus"
-	"github.com/xeipuuv/gojsonschema"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -121,10 +121,7 @@ func (s Schema) Validate() error {
 		return err
 	}
 
-	sl := gojsonschema.NewSchemaLoader()
-	sl.Validate = true
-
-	if err := sl.AddSchemas(gojsonschema.NewStringLoader(string(jsonStr))); err != nil {
+	if _, err := jsonschema.CompileString("schema.json", string(jsonStr)); err != nil {
 		return err
 	}
 
@@ -304,7 +301,7 @@ func YamlToSchema(
 		requiredProperties := []string{}
 
 		schema.Type = "object"
-		schema.Schema = "http://json-schema.org/draft-07/schema#"
+		schema.Schema = "http://json-schema.org/draft/2020-12/schema#"
 		schema.Properties = YamlToSchema(
 			node.Content[0],
 			keepFullComment,
