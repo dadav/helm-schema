@@ -2,7 +2,7 @@
 - id: helm-schema
   description: Uses helm-schema to create a jsonschema.
   entry: helm-schema
-  files: ^(Chart|values)\.yaml$
+  files: (Chart|values)\.yaml$
   language: golang
   name: Generate jsonschema
   require_serial: true
