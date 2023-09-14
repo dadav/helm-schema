@@ -43,6 +43,7 @@ type Schema struct {
 	Required              bool               `yaml:"required,omitempty"              json:"-"`
 	Deprecated            bool               `yaml:"deprecated,omitempty"            json:"deprecated,omitempty"`
 	Items                 *Schema            `yaml:"items,omitempty"                 json:"items,omitempty"`
+	PrefixedItems         []*Schema          `yaml:"prefixedItems,omitempty"         json:"prefixedItems,omitempty"`
 	Enum                  []string           `yaml:"enum,omitempty"                  json:"enum,omitempty"`
 	Const                 string             `yaml:"const,omitempty"                 json:"const,omitempty"`
 	Examples              []string           `yaml:"examples,omitempty"              json:"examples,omitempty"`
@@ -55,6 +56,7 @@ type Schema struct {
 	PatternProperties     map[string]*Schema `yaml:"patternProperties,omitempty"     json:"patternProperties,omitempty"`
 	RequiredProperties    []string           `yaml:"-"                               json:"required,omitempty"`
 	UnevaluatedProperties SchemaOrBool       `yaml:"unevaluatedProperties,omitempty" json:"unevaluatedProperties,omitempty"`
+	UnevaluatedItems      SchemaOrBool       `yaml:"unevaluatedItems,omitempty"      json:"unevaluatedItems,omitempty"`
 	AnyOf                 []*Schema          `yaml:"anyOf,omitempty"                 json:"anyOf,omitempty"`
 	OneOf                 []*Schema          `yaml:"oneOf,omitempty"                 json:"oneOf,omitempty"`
 	AllOf                 []*Schema          `yaml:"allOf,omitempty"                 json:"allOf,omitempty"`
