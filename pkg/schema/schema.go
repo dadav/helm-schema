@@ -33,40 +33,40 @@ type SchemaOrBool interface{}
 
 // Schema struct contains yaml tags for reading, json for writing (creating the jsonschema)
 type Schema struct {
-	Type                  string             `yaml:"type,omitempty"                  json:"type,omitempty"`
-	Title                 string             `yaml:"title,omitempty"                 json:"title,omitempty"`
-	Description           string             `yaml:"description,omitempty"           json:"description,omitempty"`
-	Default               interface{}        `yaml:"default,omitempty"               json:"default,omitempty"`
-	Properties            map[string]*Schema `yaml:"properties,omitempty"            json:"properties,omitempty"`
-	Pattern               string             `yaml:"pattern,omitempty"               json:"pattern,omitempty"`
-	Format                string             `yaml:"format,omitempty"                json:"format,omitempty"`
-	Required              bool               `yaml:"required,omitempty"              json:"-"`
-	Deprecated            bool               `yaml:"deprecated,omitempty"            json:"deprecated,omitempty"`
-	Items                 *Schema            `yaml:"items,omitempty"                 json:"items,omitempty"`
-	PrefixedItems         []*Schema          `yaml:"prefixedItems,omitempty"         json:"prefixedItems,omitempty"`
-	Enum                  []string           `yaml:"enum,omitempty"                  json:"enum,omitempty"`
-	Const                 string             `yaml:"const,omitempty"                 json:"const,omitempty"`
-	Examples              []string           `yaml:"examples,omitempty"              json:"examples,omitempty"`
-	Minimum               *int               `yaml:"minimum,omitempty"               json:"minimum,omitempty"`
-	Maximum               *int               `yaml:"maximum,omitempty"               json:"maximum,omitempty"`
-	ExclusiveMinimum      *int               `yaml:"exclusiveMinimum,omitempty"      json:"exclusiveMinimum,omitempty"`
-	ExclusiveMaximum      *int               `yaml:"exclusiveMaximum,omitempty"      json:"exclusiveMaximum,omitempty"`
-	MultipleOf            *int               `yaml:"multipleOf,omitempty"            json:"multipleOf,omitempty"`
-	AdditionalProperties  SchemaOrBool       `yaml:"additionalProperties,omitempty"  json:"additionalProperties,omitempty"`
-	PatternProperties     map[string]*Schema `yaml:"patternProperties,omitempty"     json:"patternProperties,omitempty"`
-	RequiredProperties    []string           `yaml:"-"                               json:"required,omitempty"`
-	UnevaluatedProperties SchemaOrBool       `yaml:"unevaluatedProperties,omitempty" json:"unevaluatedProperties,omitempty"`
-	UnevaluatedItems      SchemaOrBool       `yaml:"unevaluatedItems,omitempty"      json:"unevaluatedItems,omitempty"`
-	AnyOf                 []*Schema          `yaml:"anyOf,omitempty"                 json:"anyOf,omitempty"`
-	OneOf                 []*Schema          `yaml:"oneOf,omitempty"                 json:"oneOf,omitempty"`
-	AllOf                 []*Schema          `yaml:"allOf,omitempty"                 json:"allOf,omitempty"`
-	If                    *Schema            `yaml:"if,omitempty"                    json:"if,omitempty"`
-	Then                  *Schema            `yaml:"then,omitempty"                  json:"then,omitempty"`
-	Else                  *Schema            `yaml:"else,omitempty"                  json:"else,omitempty"`
-	HasData               bool               `yaml:"-"                               json:"-"`
-	Ref                   string             `yaml:"$ref,omitempty"                  json:"$ref,omitempty"`
-	Schema                string             `yaml:"$schema,omitempty"               json:"$schema,omitempty"`
-	Id                    string             `yaml:"$id,omitempty"                   json:"$id,omitempty"`
+	Type        string             `yaml:"type,omitempty"                 json:"type,omitempty"`
+	Title       string             `yaml:"title,omitempty"                json:"title,omitempty"`
+	Description string             `yaml:"description,omitempty"          json:"description,omitempty"`
+	Default     interface{}        `yaml:"default,omitempty"              json:"default,omitempty"`
+	Properties  map[string]*Schema `yaml:"properties,omitempty"           json:"properties,omitempty"`
+	Pattern     string             `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
+	Format      string             `yaml:"format,omitempty"               json:"format,omitempty"`
+	// Required is not specified in jsonschema. We use this value to compute the requiredProperties
+	// value
+	Required             bool               `yaml:"required,omitempty"             json:"-"`
+	Deprecated           bool               `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
+	Items                *Schema            `yaml:"items,omitempty"                json:"items,omitempty"`
+	Enum                 []string           `yaml:"enum,omitempty"                 json:"enum,omitempty"`
+	Const                string             `yaml:"const,omitempty"                json:"const,omitempty"`
+	Examples             []string           `yaml:"examples,omitempty"             json:"examples,omitempty"`
+	Minimum              *int               `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
+	Maximum              *int               `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
+	ExclusiveMinimum     *int               `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
+	ExclusiveMaximum     *int               `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
+	MultipleOf           *int               `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
+	AdditionalProperties SchemaOrBool       `yaml:"additionalProperties,omitempty" json:"additionalProperties,omitempty"`
+	PatternProperties    map[string]*Schema `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
+	// Computed from Required value
+	RequiredProperties []string  `yaml:"-"                              json:"required,omitempty"`
+	AnyOf              []*Schema `yaml:"anyOf,omitempty"                json:"anyOf,omitempty"`
+	OneOf              []*Schema `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
+	AllOf              []*Schema `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
+	If                 *Schema   `yaml:"if,omitempty"                   json:"if,omitempty"`
+	Then               *Schema   `yaml:"then,omitempty"                 json:"then,omitempty"`
+	Else               *Schema   `yaml:"else,omitempty"                 json:"else,omitempty"`
+	HasData            bool      `yaml:"-"                              json:"-"`
+	Ref                string    `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
+	Schema             string    `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
+	Id                 string    `yaml:"$id,omitempty"                  json:"$id,omitempty"`
 }
 
 // Set sets the HasData field to true
@@ -306,7 +306,7 @@ func YamlToSchema(
 		requiredProperties := []string{}
 
 		schema.Type = "object"
-		schema.Schema = "http://json-schema.org/draft/2020-12/schema#"
+		schema.Schema = "http://json-schema.org/draft-07/schema#"
 		schema.Properties = YamlToSchema(
 			node.Content[0],
 			keepFullComment,
