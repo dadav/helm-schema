@@ -29,6 +29,8 @@ const (
 	mapTag       = "!!map"
 )
 
+type SchemaOrBool interface{}
+
 // Schema struct contains yaml tags for reading, json for writing (creating the jsonschema)
 type Schema struct {
 	Type                  string             `yaml:"type,omitempty"                  json:"type,omitempty"`
