@@ -51,7 +51,8 @@ type Schema struct {
 	ExclusiveMinimum      *int               `yaml:"exclusiveMinimum,omitempty"      json:"exclusiveMinimum,omitempty"`
 	ExclusiveMaximum      *int               `yaml:"exclusiveMaximum,omitempty"      json:"exclusiveMaximum,omitempty"`
 	MultipleOf            *int               `yaml:"multipleOf,omitempty"            json:"multipleOf,omitempty"`
-	AdditionalProperties  *bool              `yaml:"additionalProperties,omitempty"  json:"additionalProperties,omitempty"`
+	AdditionalProperties  SchemaOrBool       `yaml:"additionalProperties,omitempty"  json:"additionalProperties,omitempty"`
+	PatternProperties     map[string]*Schema `yaml:"patternProperties,omitempty"     json:"patternProperties,omitempty"`
 	RequiredProperties    []string           `yaml:"-"                               json:"required,omitempty"`
 	UnevaluatedProperties []string           `yaml:"unevaluatedProperties,omitempty" json:"unevaluatedProperties,omitempty"`
 	AnyOf                 []*Schema          `yaml:"anyOf,omitempty"                 json:"anyOf,omitempty"`
