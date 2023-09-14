@@ -54,7 +54,7 @@ type Schema struct {
 	AdditionalProperties  SchemaOrBool       `yaml:"additionalProperties,omitempty"  json:"additionalProperties,omitempty"`
 	PatternProperties     map[string]*Schema `yaml:"patternProperties,omitempty"     json:"patternProperties,omitempty"`
 	RequiredProperties    []string           `yaml:"-"                               json:"required,omitempty"`
-	UnevaluatedProperties []string           `yaml:"unevaluatedProperties,omitempty" json:"unevaluatedProperties,omitempty"`
+	UnevaluatedProperties SchemaOrBool       `yaml:"unevaluatedProperties,omitempty" json:"unevaluatedProperties,omitempty"`
 	AnyOf                 []*Schema          `yaml:"anyOf,omitempty"                 json:"anyOf,omitempty"`
 	OneOf                 []*Schema          `yaml:"oneOf,omitempty"                 json:"oneOf,omitempty"`
 	AllOf                 []*Schema          `yaml:"allOf,omitempty"                 json:"allOf,omitempty"`
