@@ -51,7 +51,7 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		BoolP("dry-run", "d", false, "don't actually create files just print to stdout passed")
 	cmd.PersistentFlags().
-		BoolP("keep-full-comment", "s", false, "If this flag is used, comment won't be cut off if two newlines are found.")
+		BoolP("keep-full-comment", "s", false, "Keep the whole leading comment (default: cut at empty line)")
 	cmd.PersistentFlags().
 		BoolP("no-dependencies", "n", false, "don't analyze dependencies")
 	cmd.PersistentFlags().StringP("log-level", "l", "info", logLevelUsage)
