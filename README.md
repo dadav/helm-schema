@@ -109,9 +109,13 @@ Defines the [description field](https://json-schema.org/understanding-json-schem
 
 Defaults to the comment which has no `# @schema` prefix.
 
-**items**
+**default**
 
-Contains the schema that describes the possible array items.
+Sets the default value and will be displayed first on the users IDE.
+
+**properties**
+
+Contains a map with keys as property names and values as schema.
 
 **pattern**
 
@@ -120,6 +124,7 @@ Regex pattern to test the value.
 **format**
 
 The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values.
+
 
 **required**
 
@@ -132,6 +137,18 @@ Takes a boolean value.
 Marks the option as deprecated.
 
 Takes a boolean value.
+
+**items**
+
+Contains the schema that describes the possible array items.
+
+**enum**
+
+Multiple allowed values.
+
+**const**
+
+Single allowed value.
 
 **examples**
 
@@ -177,14 +194,6 @@ Value, the yaml-value must be a multiple of.
 
 For example: If you set this to 10, allowed values would be 0, 10, 20, 30....
 
-**const**
-
-Single allowed value.
-
-**enum**
-
-Multiple allowed values.
-
 **additionalProperties**
 
 Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`,
@@ -192,7 +201,28 @@ which will be filled with keys that the jsonschema can't know.
 
 Defaults to `false` if the map is not an empty map.
 
-Takes a boolean value.
+Takes a schema or boolean value.
+
+**patternProperties**
+
+Contains a map which maps schemas to pattern. If properties match the patterns, the given
+schema is applied.
+
+**anyOf**
+
+Accepts an array of schemas. None or one must apply.
+
+**oneOf**
+
+Accepts an array of schemas. One or more must apply.
+
+**allOf**
+
+Accepts an array of schemas. All must apply.
+
+**if/then/else**
+
+`If` the given schema applies, `then` also apply the given schema or `else` the other schema.
 
 ## Example
 
