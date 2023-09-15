@@ -293,6 +293,7 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 func YamlToSchema(
 	node *yaml.Node,
 	keepFullComment bool,
+	dontRemoveHelmDocsPrefix bool,
 	parentRequiredProperties *[]string,
 ) Schema {
 	var schema Schema
@@ -310,6 +311,7 @@ func YamlToSchema(
 		schema.Properties = YamlToSchema(
 			node.Content[0],
 			keepFullComment,
+			dontRemoveHelmDocsPrefix,
 			&requiredProperties,
 		).Properties
 
@@ -344,6 +346,10 @@ func YamlToSchema(
 			keyNodeSchema, description, err := GetSchemaFromComment(comment)
 			if err != nil {
 				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
+			}
+			if !dontRemoveHelmDocsPrefix {
+				prefixRemover := regexp.MustCompile(`(?m)^--\s?`)
+				description = prefixRemover.ReplaceAllString(description, "")
 			}
 
 			if keyNodeSchema.HasData {
@@ -394,6 +400,7 @@ func YamlToSchema(
 				keyNodeSchema.Properties = YamlToSchema(
 					valueNode,
 					keepFullComment,
+					dontRemoveHelmDocsPrefix,
 					&requiredProperties,
 				).Properties
 				if len(requiredProperties) > 0 {
@@ -413,7 +420,7 @@ func YamlToSchema(
 						seqSchema.AnyOf = append(seqSchema.AnyOf, &Schema{Type: itemNodeType})
 					} else {
 						itemRequiredProperties := []string{}
-						itemSchema := YamlToSchema(itemNode, keepFullComment, &itemRequiredProperties)
+						itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, &itemRequiredProperties)
 
 						if len(itemRequiredProperties) > 0 {
 							itemSchema.RequiredProperties = itemRequiredProperties
