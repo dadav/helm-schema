@@ -9,13 +9,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dadav/helm-schema/pkg/chart"
-	"github.com/dadav/helm-schema/pkg/schema"
-	"github.com/dadav/helm-schema/pkg/util"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	yaml "gopkg.in/yaml.v3"
+
+	"github.com/dadav/helm-schema/pkg/chart"
+	"github.com/dadav/helm-schema/pkg/schema"
+	"github.com/dadav/helm-schema/pkg/util"
 )
 
 func searchFiles(startPath, fileName string, queue chan<- string, errs chan<- error) {
@@ -288,8 +289,12 @@ loop:
 							Description: dependencyResult.Chart.Description,
 							Properties:  dependencyResult.Schema.Properties,
 						}
+						// you don't NEED to overwrite the values
+						// so every required check will be disabled
 						depSchema.DisableRequiredProperties()
+
 						result.Schema.Properties[dep.Name] = &depSchema
+
 					} else {
 						log.Warnf("Dependency (%s->%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dependency build & untar the charts.", result.Chart.Name, dep.Name)
 					}

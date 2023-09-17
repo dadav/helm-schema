@@ -394,7 +394,6 @@ func YamlToSchema(
 			}
 
 			// If the value is another map and no properties are set, get them from default values
-			// TODO: also consider allOf, anyOf and oneOf
 			if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
 				requiredProperties := []string{}
 				keyNodeSchema.Properties = YamlToSchema(
@@ -408,7 +407,6 @@ func YamlToSchema(
 				}
 			} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
 				// If the value is a sequence, but no items are predefined
-				// TODO: also consider allOf, anyOf and oneOf
 				var seqSchema Schema
 
 				for _, itemNode := range valueNode.Content {
@@ -426,7 +424,6 @@ func YamlToSchema(
 							itemSchema.RequiredProperties = itemRequiredProperties
 						}
 
-						// here
 						if itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
 							itemSchema.AdditionalProperties = new(bool)
 						}
