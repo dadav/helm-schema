@@ -297,10 +297,25 @@ baz: []
 
 Per default, `helm-schema` will try to also create the schemas for the dependencies in the charts
 directory. These schemas will be added as properties in the main schema, but the
-`requiredProperties` field will be emptied. Otherwise you would have to always overwrite all the
+`requiredProperties` field will be nullified. Otherwise you would have to always overwrite all the
 required fields.
 
 If you don't want to generate jsonschemas for dependencies, you can use the `-n` option.
+
+## Limitations
+
+You can't change the jsonschema for dependencies by using `@schema` annotations on dependency
+config values. For example: 
+
+```yaml
+# foo is a dependency chart
+foo:
+  # You can't change the schema here, this has no effect.
+  # @schema
+  # type: number
+  # @schema
+  bar: 1
+```
 
 ## License
 
