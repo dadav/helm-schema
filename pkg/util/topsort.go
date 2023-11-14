@@ -1,7 +1,8 @@
 package util
 
 import (
-	"errors"
+	"fmt"
+
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
@@ -35,7 +36,7 @@ func TopSort[R any, I comparable](results []R, identify func(i R) I, dependencie
 				g = append(g, depNamesToResults[name])
 			}
 
-			return g, errors.New("Circular or missing dependency found")
+			return g, &CircularError{fmt.Sprintf("circular or missing dependency found: %v", depNamesToNames)}
 		}
 
 		for name := range readySet.Iter() {

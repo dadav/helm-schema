@@ -33,7 +33,6 @@ func searchFiles(startPath, fileName string, queue chan<- string, errs chan<- er
 
 		return nil
 	})
-
 	if err != nil {
 		errs <- err
 	}
@@ -197,10 +196,13 @@ loop:
 			return deps
 		},
 	)
-
 	if err != nil {
-		log.Errorf("Error while sorting results: %s", err)
-		return err
+		if _, ok := err.(*util.CircularError); !ok {
+			log.Errorf("Error while sorting results: %s", err)
+			return err
+		} else {
+			log.Warnf("Could not sort results: %s", err)
+		}
 	}
 
 	conditionsToPatch := make(map[string][]string)
