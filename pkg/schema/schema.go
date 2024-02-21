@@ -139,22 +139,22 @@ func (s Schema) Validate() error {
 		s.Type != "array" &&
 		s.Type != "null" &&
 		s.Type != "boolean" {
-		return errors.New(fmt.Sprintf("Unsupported type %s", s.Type))
+		return fmt.Errorf("unsupported type %s", s.Type)
 	}
 
 	// Check if type=string if pattern!=""
 	if s.Pattern != "" && s.Type != "" && s.Type != "string" {
-		return errors.New(fmt.Sprintf("Cant use pattern if type is %s. Use type=string", s.Type))
+		return fmt.Errorf("cant use pattern if type is %s. Use type=string", s.Type)
 	}
 
 	// Check if type=string if format!=""
 	if s.Format != "" && s.Type != "" && s.Type != "string" {
-		return errors.New(fmt.Sprintf("Cant use format if type is %s. Use type=string", s.Type))
+		return fmt.Errorf("cant use format if type is %s. Use type=string", s.Type)
 	}
 
 	// Cant use Format and Pattern together
 	if s.Format != "" && s.Pattern != "" {
-		return errors.New(fmt.Sprintf("Cant use format and pattern option at the same time"))
+		return errors.New("cant use format and pattern option at the same time")
 	}
 
 	// Validate nested Items schema
@@ -166,15 +166,15 @@ func (s Schema) Validate() error {
 
 	// If type and items are used, type must be array
 	if s.Items != nil && s.Type != "" && s.Type != "array" {
-		return errors.New(fmt.Sprintf("Cant use items if type is %s. Use type=array", s.Type))
+		return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
 	}
 
 	if s.Const != "" && s.Type != "" {
-		return errors.New("If your are using const, you can't use type")
+		return errors.New("if your are using const, you can't use type")
 	}
 
 	if s.Enum != nil && s.Type != "" {
-		return errors.New("If your are using enum, you can't use type")
+		return errors.New("if your are using enum, you can't use type")
 	}
 
 	// Check if format is valid
@@ -200,32 +200,32 @@ func (s Schema) Validate() error {
 		s.Format != "json-pointer" &&
 		s.Format != "relative-json-pointer" &&
 		s.Format != "regex" {
-		return errors.New(fmt.Sprintf("The format %s is not supported.", s.Format))
+		return fmt.Errorf("the format %s is not supported", s.Format)
 	}
 
 	if s.Minimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If you use minimum, you cant use type=%s", s.Type))
+		return fmt.Errorf("if you use minimum, you cant use type=%s", s.Type)
 	}
 	if s.Maximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If you use maximum, you cant use type=%s", s.Type))
+		return fmt.Errorf("if you use maximum, you cant use type=%s", s.Type)
 	}
 	if s.ExclusiveMinimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If you use exclusiveMinimum, you cant use type=%s", s.Type))
+		return fmt.Errorf("if you use exclusiveMinimum, you cant use type=%s", s.Type)
 	}
 	if s.ExclusiveMaximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If you use exclusiveMaximum, you cant use type=%s", s.Type))
+		return fmt.Errorf("if you use exclusiveMaximum, you cant use type=%s", s.Type)
 	}
 	if s.MultipleOf != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-		return errors.New(fmt.Sprintf("If you use multiple, you cant use type=%s", s.Type))
+		return fmt.Errorf("if you use multiple, you cant use type=%s", s.Type)
 	}
 	if s.MultipleOf != nil && *s.MultipleOf <= 0 {
 		return errors.New("multiple option must be greater than 0")
 	}
 	if s.Minimum != nil && s.ExclusiveMinimum != nil {
-		return errors.New("You cant set minimum and exclusiveMinimum")
+		return errors.New("you cant set minimum and exclusiveMinimum")
 	}
 	if s.Maximum != nil && s.ExclusiveMaximum != nil {
-		return errors.New("You cant set minimum and exclusiveMaximum")
+		return errors.New("you cant set minimum and exclusiveMaximum")
 	}
 	return nil
 }
@@ -249,7 +249,7 @@ func typeFromTag(tag string) (string, error) {
 	case mapTag:
 		return "object", nil
 	}
-	return "", errors.New(fmt.Sprintf("Unsupported yaml tag found: %s", tag))
+	return "", fmt.Errorf("unsupported yaml tag found: %s", tag)
 }
 
 // GetSchemaFromComment parses the annotations from the given comment
@@ -276,9 +276,8 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 	}
 
 	if insideSchemaBlock {
-		return result, "", errors.New(
-			fmt.Sprintf("Unclosed schema block found in comment: %s", comment),
-		)
+		return result, "",
+			fmt.Errorf("unclosed schema block found in comment: %s", comment)
 	}
 
 	err := yaml.Unmarshal([]byte(strings.Join(rawSchema, "\n")), &result)
