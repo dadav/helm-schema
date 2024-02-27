@@ -24,6 +24,20 @@ func TestValidate(t *testing.T) {
 		{
 			comment: `
 # @schema
+# type: [doesnotexist, string]
+# @schema`,
+			expectedValid: false,
+		},
+		{
+			comment: `
+# @schema
+# type: [string, integer]
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
 # type: string
 # @schema`,
 			expectedValid: true,

@@ -70,8 +70,25 @@ func (s *StringOrArrayOfString) Validate() error {
 			return fmt.Errorf("unsupported type %s", s)
 		}
 	}
-
 	return nil
+}
+
+func (s *StringOrArrayOfString) IsEmpty() bool {
+	for _, t := range []string(*s) {
+		if t == "" {
+			return true
+		}
+	}
+	return len(*s) == 0
+}
+
+func (s *StringOrArrayOfString) Matches(typeString string) bool {
+	for _, t := range []string(*s) {
+		if t == typeString {
+			return true
+		}
+	}
+	return false
 }
 
 // Schema struct contains yaml tags for reading, json for writing (creating the jsonschema)
@@ -176,14 +193,14 @@ func (s Schema) Validate() error {
 	}
 
 	// Check if type=string if pattern!=""
-	// if s.Pattern != "" && s.Type[0] != "" && s.Type[0] != "string" {
-	// 	return fmt.Errorf("cant use pattern if type is %s. Use type=string", s.Type)
-	// }
+	if s.Pattern != "" && !s.Type.IsEmpty() && !s.Type.Matches("string") {
+		return fmt.Errorf("cant use pattern if type is %s. Use type=string", s.Type)
+	}
 
 	// // Check if type=string if format!=""
-	// if s.Format != "" && s.Type != "" && s.Type != "string" {
-	// 	return fmt.Errorf("cant use format if type is %s. Use type=string", s.Type)
-	// }
+	if s.Format != "" && !s.Type.IsEmpty() && !s.Type.Matches("string") {
+		return fmt.Errorf("cant use format if type is %s. Use type=string", s.Type)
+	}
 
 	// Cant use Format and Pattern together
 	if s.Format != "" && s.Pattern != "" {
@@ -198,17 +215,17 @@ func (s Schema) Validate() error {
 	}
 
 	// // If type and items are used, type must be array
-	// if s.Items != nil && s.Type != "" && s.Type != "array" {
-	// 	return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
-	// }
+	if s.Items != nil && !s.Type.IsEmpty() && !s.Type.Matches("array") {
+		return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
+	}
 
-	// if s.Const != "" && s.Type != "" {
-	// 	return errors.New("if your are using const, you can't use type")
-	// }
+	if s.Const != "" && !s.Type.IsEmpty() {
+		return errors.New("if your are using const, you can't use type")
+	}
 
-	// if s.Enum != nil && s.Type != "" {
-	// 	return errors.New("if your are using enum, you can't use type")
-	// }
+	if s.Enum != nil && !s.Type.IsEmpty() {
+		return errors.New("if your are using enum, you can't use type")
+	}
 
 	// Check if format is valid
 	// https://json-schema.org/understanding-json-schema/reference/string.html#built-in-formats
@@ -236,24 +253,24 @@ func (s Schema) Validate() error {
 		return fmt.Errorf("the format %s is not supported", s.Format)
 	}
 
-	// if s.Minimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-	// 	return fmt.Errorf("if you use minimum, you cant use type=%s", s.Type)
-	// }
-	// if s.Maximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-	// 	return fmt.Errorf("if you use maximum, you cant use type=%s", s.Type)
-	// }
-	// if s.ExclusiveMinimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-	// 	return fmt.Errorf("if you use exclusiveMinimum, you cant use type=%s", s.Type)
-	// }
-	// if s.ExclusiveMaximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-	// 	return fmt.Errorf("if you use exclusiveMaximum, you cant use type=%s", s.Type)
-	// }
-	// if s.MultipleOf != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
-	// 	return fmt.Errorf("if you use multiple, you cant use type=%s", s.Type)
-	// }
-	// if s.MultipleOf != nil && *s.MultipleOf <= 0 {
-	// 	return errors.New("multiple option must be greater than 0")
-	// }
+	if s.Minimum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
+		return fmt.Errorf("if you use minimum, you cant use type=%s", s.Type)
+	}
+	if s.Maximum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
+		return fmt.Errorf("if you use maximum, you cant use type=%s", s.Type)
+	}
+	if s.ExclusiveMinimum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
+		return fmt.Errorf("if you use exclusiveMinimum, you cant use type=%s", s.Type)
+	}
+	if s.ExclusiveMaximum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
+		return fmt.Errorf("if you use exclusiveMaximum, you cant use type=%s", s.Type)
+	}
+	if s.MultipleOf != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
+		return fmt.Errorf("if you use multiple, you cant use type=%s", s.Type)
+	}
+	if s.MultipleOf != nil && *s.MultipleOf <= 0 {
+		return errors.New("multiple option must be greater than 0")
+	}
 	if s.Minimum != nil && s.ExclusiveMinimum != nil {
 		return errors.New("you cant set minimum and exclusiveMinimum")
 	}
