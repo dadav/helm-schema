@@ -48,6 +48,7 @@ type Result struct {
 
 func worker(
 	dryRun, keepFullComment, dontRemoveHelmDocsPrefix bool,
+	omitAdditionalProperties bool,
 	valueFileNames []string,
 	outFile string,
 	queue <-chan string,
@@ -120,7 +121,7 @@ func worker(
 			continue
 		}
 
-		result.Schema = schema.YamlToSchema(&values, keepFullComment, dontRemoveHelmDocsPrefix, nil)
+		result.Schema = schema.YamlToSchema(&values, keepFullComment, dontRemoveHelmDocsPrefix, omitAdditionalProperties, nil)
 
 		results <- result
 	}
@@ -136,6 +137,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	outFile := viper.GetString("output-file")
 	valueFileNames := viper.GetStringSlice("value-files")
 	dontRemoveHelmDocsPrefix := viper.GetBool("dont-strip-helm-docs-prefix")
+	omitAdditionalProperties := viper.GetBool("omit-additional-properties")
 	workersCount := runtime.NumCPU() * 2
 
 	// 1. Start a producer that searches Chart.yaml and values.yaml files
@@ -163,6 +165,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 				dryRun,
 				keepFullComment,
 				dontRemoveHelmDocsPrefix,
+				omitAdditionalProperties,
 				valueFileNames,
 				outFile,
 				queue,
