@@ -263,12 +263,12 @@ loop:
 						)
 						if i == lastIndex {
 							schemaToPatch.Properties[key] = &schema.Schema{
-								Type:        "boolean",
+								Type:        []string{"boolean"},
 								Title:       key,
 								Description: "Conditional property used in parent chart",
 							}
 						} else {
-							schemaToPatch.Properties[key] = &schema.Schema{Type: "object", Title: key}
+							schemaToPatch.Properties[key] = &schema.Schema{Type: []string{"object"}, Title: key}
 							schemaToPatch = schemaToPatch.Properties[key]
 						}
 					} else {
@@ -286,7 +286,7 @@ loop:
 							dependencyResult.ChartPath,
 						)
 						depSchema := schema.Schema{
-							Type:        "object",
+							Type:        []string{"object"},
 							Title:       dep.Name,
 							Description: dependencyResult.Chart.Description,
 							Properties:  dependencyResult.Schema.Properties,
