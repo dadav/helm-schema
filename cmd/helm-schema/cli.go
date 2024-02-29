@@ -61,6 +61,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 		StringSliceP("value-files", "f", []string{"values.yaml"}, "filenames to check for chart values")
 	cmd.PersistentFlags().
 		StringP("output-file", "o", "values.schema.json", "jsonschema file path relative to each chart directory to which jsonschema will be written")
+	cmd.PersistentFlags().
+		BoolP("omit-required-properties", "r", false, "omit \"required\" if not explicitly specified in schema annotation")
 
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("HELM_SCHEMA")

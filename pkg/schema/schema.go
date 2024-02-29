@@ -290,6 +290,7 @@ func YamlToSchema(
 	node *yaml.Node,
 	keepFullComment bool,
 	dontRemoveHelmDocsPrefix bool,
+	omitRequiredProperties bool,
 	parentRequiredProperties *[]string,
 ) Schema {
 	var schema Schema
@@ -308,6 +309,7 @@ func YamlToSchema(
 			node.Content[0],
 			keepFullComment,
 			dontRemoveHelmDocsPrefix,
+			omitRequiredProperties,
 			&requiredProperties,
 		).Properties
 
@@ -365,7 +367,7 @@ func YamlToSchema(
 			}
 
 			// Add key to required array of parent
-			if keyNodeSchema.Required || !keyNodeSchema.HasData {
+			if keyNodeSchema.Required || (!omitRequiredProperties && !keyNodeSchema.HasData) {
 				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
 			}
 
@@ -396,6 +398,7 @@ func YamlToSchema(
 					valueNode,
 					keepFullComment,
 					dontRemoveHelmDocsPrefix,
+					omitRequiredProperties,
 					&requiredProperties,
 				).Properties
 				if len(requiredProperties) > 0 {
@@ -414,7 +417,7 @@ func YamlToSchema(
 						seqSchema.AnyOf = append(seqSchema.AnyOf, &Schema{Type: itemNodeType})
 					} else {
 						itemRequiredProperties := []string{}
-						itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, &itemRequiredProperties)
+						itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, omitRequiredProperties, &itemRequiredProperties)
 
 						if len(itemRequiredProperties) > 0 {
 							itemSchema.RequiredProperties = itemRequiredProperties
