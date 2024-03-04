@@ -43,7 +43,7 @@ If you want to automatically generate a new `values.schema.json` if you change t
 file, you can do the following:
 
 1. Install [`pre-commit`](https://pre-commit.com/#install)
-2. Copy the [.pre-commit-config.yaml](./.pre-commit-config.yaml) to your helm chart repository.
+2. Copy the [`.pre-commit-config.yaml`](./.pre-commit-config.yaml) to your helm chart repository.
 3. Then run these commands:
 ```sh
 pre-commit install
@@ -86,7 +86,7 @@ my: annotation
 # @schema
 ```
 
-It must be written in front of the key you want to annotate.
+⚠️ It must be written in front of the key you want to annotate.
 
 ℹ️ If you don't use the `properties` option on hashes or don't use `items` on arrays, it will be parsed from the values and their annotations instead.
 
