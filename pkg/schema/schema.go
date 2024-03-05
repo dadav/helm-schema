@@ -31,39 +31,110 @@ const (
 
 type SchemaOrBool interface{}
 
+type StringOrArrayOfString []string
+
+func (s *StringOrArrayOfString) UnmarshalYAML(value *yaml.Node) error {
+	var multi []string
+	if value.ShortTag() == arrayTag {
+		for _, v := range value.Content {
+			if v.ShortTag() == nullTag {
+				multi = append(multi, "null")
+			} else {
+				var typeStr string
+				err := v.Decode(&typeStr)
+				if err != nil {
+					return err
+				}
+				multi = append(multi, typeStr)
+			}
+		}
+		*s = multi
+	} else {
+		var single string
+		err := value.Decode(&single)
+		if err != nil {
+			return err
+		}
+		*s = []string{single}
+	}
+	return nil
+}
+
+func (s *StringOrArrayOfString) MarshalJSON() ([]byte, error) {
+	if len(*s) == 1 {
+		return json.Marshal([]string(*s)[0])
+	}
+	return json.Marshal([]string(*s))
+}
+
+func (s *StringOrArrayOfString) Validate() error {
+	// Check if type is valid
+	for _, t := range []string(*s) {
+		if t != "" &&
+			t != "object" &&
+			t != "string" &&
+			t != "integer" &&
+			t != "number" &&
+			t != "array" &&
+			t != "null" &&
+			t != "boolean" {
+			return fmt.Errorf("unsupported type %s", s)
+		}
+	}
+	return nil
+}
+
+func (s *StringOrArrayOfString) IsEmpty() bool {
+	for _, t := range []string(*s) {
+		if t == "" {
+			return true
+		}
+	}
+	return len(*s) == 0
+}
+
+func (s *StringOrArrayOfString) Matches(typeString string) bool {
+	for _, t := range []string(*s) {
+		if t == typeString {
+			return true
+		}
+	}
+	return false
+}
+
 // Schema struct contains yaml tags for reading, json for writing (creating the jsonschema)
 type Schema struct {
-	AdditionalProperties SchemaOrBool       `yaml:"additionalProperties,omitempty" json:"additionalProperties,omitempty"`
-	Default              interface{}        `yaml:"default,omitempty"              json:"default,omitempty"`
-	Then                 *Schema            `yaml:"then,omitempty"                 json:"then,omitempty"`
-	PatternProperties    map[string]*Schema `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
-	Properties           map[string]*Schema `yaml:"properties,omitempty"           json:"properties,omitempty"`
-	If                   *Schema            `yaml:"if,omitempty"                   json:"if,omitempty"`
-	Minimum              *int               `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
-	MultipleOf           *int               `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
-	ExclusiveMaximum     *int               `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
-	Items                *Schema            `yaml:"items,omitempty"                json:"items,omitempty"`
-	ExclusiveMinimum     *int               `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
-	Maximum              *int               `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
-	Else                 *Schema            `yaml:"else,omitempty"                 json:"else,omitempty"`
-	Pattern              string             `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
-	Const                string             `yaml:"const,omitempty"                json:"const,omitempty"`
-	Ref                  string             `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
-	Schema               string             `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
-	Id                   string             `yaml:"$id,omitempty"                  json:"$id,omitempty"`
-	Format               string             `yaml:"format,omitempty"               json:"format,omitempty"`
-	Description          string             `yaml:"description,omitempty"          json:"description,omitempty"`
-	Title                string             `yaml:"title,omitempty"                json:"title,omitempty"`
-	Type                 string             `yaml:"type,omitempty"                 json:"type,omitempty"`
-	AnyOf                []*Schema          `yaml:"anyOf,omitempty"                json:"anyOf,omitempty"`
-	AllOf                []*Schema          `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
-	OneOf                []*Schema          `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
-	RequiredProperties   []string           `yaml:"-"                              json:"required,omitempty"`
-	Examples             []string           `yaml:"examples,omitempty"             json:"examples,omitempty"`
-	Enum                 []string           `yaml:"enum,omitempty"                 json:"enum,omitempty"`
-	HasData              bool               `yaml:"-"                              json:"-"`
-	Deprecated           bool               `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
-	Required             bool               `yaml:"required,omitempty"             json:"-"`
+	AdditionalProperties SchemaOrBool          `yaml:"additionalProperties,omitempty" json:"additionalProperties,omitempty"`
+	Default              interface{}           `yaml:"default,omitempty"              json:"default,omitempty"`
+	Then                 *Schema               `yaml:"then,omitempty"                 json:"then,omitempty"`
+	PatternProperties    map[string]*Schema    `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
+	Properties           map[string]*Schema    `yaml:"properties,omitempty"           json:"properties,omitempty"`
+	If                   *Schema               `yaml:"if,omitempty"                   json:"if,omitempty"`
+	Minimum              *int                  `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
+	MultipleOf           *int                  `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
+	ExclusiveMaximum     *int                  `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
+	Items                *Schema               `yaml:"items,omitempty"                json:"items,omitempty"`
+	ExclusiveMinimum     *int                  `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
+	Maximum              *int                  `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
+	Else                 *Schema               `yaml:"else,omitempty"                 json:"else,omitempty"`
+	Pattern              string                `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
+	Const                string                `yaml:"const,omitempty"                json:"const,omitempty"`
+	Ref                  string                `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
+	Schema               string                `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
+	Id                   string                `yaml:"$id,omitempty"                  json:"$id,omitempty"`
+	Format               string                `yaml:"format,omitempty"               json:"format,omitempty"`
+	Description          string                `yaml:"description,omitempty"          json:"description,omitempty"`
+	Title                string                `yaml:"title,omitempty"                json:"title,omitempty"`
+	Type                 StringOrArrayOfString `yaml:"type,omitempty"                 json:"type,omitempty"`
+	AnyOf                []*Schema             `yaml:"anyOf,omitempty"                json:"anyOf,omitempty"`
+	AllOf                []*Schema             `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
+	OneOf                []*Schema             `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
+	RequiredProperties   []string              `yaml:"-"                              json:"required,omitempty"`
+	Examples             []string              `yaml:"examples,omitempty"             json:"examples,omitempty"`
+	Enum                 []string              `yaml:"enum,omitempty"                 json:"enum,omitempty"`
+	HasData              bool                  `yaml:"-"                              json:"-"`
+	Deprecated           bool                  `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
+	Required             bool                  `yaml:"required,omitempty"             json:"-"`
 }
 
 // Set sets the HasData field to true
@@ -128,24 +199,17 @@ func (s Schema) Validate() error {
 	}
 
 	// Check if type is valid
-	if s.Type != "" &&
-		s.Type != "object" &&
-		s.Type != "string" &&
-		s.Type != "integer" &&
-		s.Type != "number" &&
-		s.Type != "array" &&
-		s.Type != "null" &&
-		s.Type != "boolean" {
-		return fmt.Errorf("unsupported type %s", s.Type)
+	if err := s.Type.Validate(); err != nil {
+		return err
 	}
 
 	// Check if type=string if pattern!=""
-	if s.Pattern != "" && s.Type != "" && s.Type != "string" {
+	if s.Pattern != "" && !s.Type.IsEmpty() && !s.Type.Matches("string") {
 		return fmt.Errorf("cant use pattern if type is %s. Use type=string", s.Type)
 	}
 
-	// Check if type=string if format!=""
-	if s.Format != "" && s.Type != "" && s.Type != "string" {
+	// // Check if type=string if format!=""
+	if s.Format != "" && !s.Type.IsEmpty() && !s.Type.Matches("string") {
 		return fmt.Errorf("cant use format if type is %s. Use type=string", s.Type)
 	}
 
@@ -161,16 +225,16 @@ func (s Schema) Validate() error {
 		}
 	}
 
-	// If type and items are used, type must be array
-	if s.Items != nil && s.Type != "" && s.Type != "array" {
+	// // If type and items are used, type must be array
+	if s.Items != nil && !s.Type.IsEmpty() && !s.Type.Matches("array") {
 		return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
 	}
 
-	if s.Const != "" && s.Type != "" {
+	if s.Const != "" && !s.Type.IsEmpty() {
 		return errors.New("if your are using const, you can't use type")
 	}
 
-	if s.Enum != nil && s.Type != "" {
+	if s.Enum != nil && !s.Type.IsEmpty() {
 		return errors.New("if your are using enum, you can't use type")
 	}
 
@@ -200,19 +264,19 @@ func (s Schema) Validate() error {
 		return fmt.Errorf("the format %s is not supported", s.Format)
 	}
 
-	if s.Minimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+	if s.Minimum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
 		return fmt.Errorf("if you use minimum, you cant use type=%s", s.Type)
 	}
-	if s.Maximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+	if s.Maximum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
 		return fmt.Errorf("if you use maximum, you cant use type=%s", s.Type)
 	}
-	if s.ExclusiveMinimum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+	if s.ExclusiveMinimum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
 		return fmt.Errorf("if you use exclusiveMinimum, you cant use type=%s", s.Type)
 	}
-	if s.ExclusiveMaximum != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+	if s.ExclusiveMaximum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
 		return fmt.Errorf("if you use exclusiveMaximum, you cant use type=%s", s.Type)
 	}
-	if s.MultipleOf != nil && s.Type != "" && s.Type != "number" && s.Type != "integer" {
+	if s.MultipleOf != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
 		return fmt.Errorf("if you use multiple, you cant use type=%s", s.Type)
 	}
 	if s.MultipleOf != nil && *s.MultipleOf <= 0 {
@@ -227,26 +291,26 @@ func (s Schema) Validate() error {
 	return nil
 }
 
-func typeFromTag(tag string) (string, error) {
+func typeFromTag(tag string) ([]string, error) {
 	switch tag {
 	case nullTag:
-		return "null", nil
+		return []string{"null"}, nil
 	case boolTag:
-		return "boolean", nil
+		return []string{"boolean"}, nil
 	case strTag:
-		return "string", nil
+		return []string{"string"}, nil
 	case intTag:
-		return "integer", nil
+		return []string{"integer"}, nil
 	case floatTag:
-		return "number", nil
+		return []string{"number"}, nil
 	case timestampTag:
-		return "string", nil
+		return []string{"string"}, nil
 	case arrayTag:
-		return "array", nil
+		return []string{"array"}, nil
 	case mapTag:
-		return "object", nil
+		return []string{"object"}, nil
 	}
-	return "", fmt.Errorf("unsupported yaml tag found: %s", tag)
+	return []string{}, fmt.Errorf("unsupported yaml tag found: %s", tag)
 }
 
 // GetSchemaFromComment parses the annotations from the given comment
@@ -302,7 +366,7 @@ func YamlToSchema(
 
 		requiredProperties := []string{}
 
-		schema.Type = "object"
+		schema.Type = []string{"object"}
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
 		schema.Properties = YamlToSchema(
 			node.Content[0],
@@ -317,7 +381,7 @@ func YamlToSchema(
 				schema.Properties = make(map[string]*Schema)
 			}
 			schema.Properties["global"] = &Schema{
-				Type:        "object",
+				Type:        []string{"object"},
 				Title:       "global",
 				Description: "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
 			}
