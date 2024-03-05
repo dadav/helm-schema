@@ -400,7 +400,9 @@ func YamlToSchema(
 			schema.RequiredProperties = requiredProperties
 		}
 		// always disable on top level
-		schema.AdditionalProperties = new(bool)
+		if !slices.Contains(skipAutoGeneration, "additionalProperties") {
+			schema.AdditionalProperties = new(bool)
+		}
 	case yaml.MappingNode:
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
@@ -442,7 +444,7 @@ func YamlToSchema(
 				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
 			}
 
-			if valueNode.Kind == yaml.MappingNode &&
+			if !slices.Contains(skipAutoGeneration, "additionalProperties") && valueNode.Kind == yaml.MappingNode &&
 				(!keyNodeSchema.HasData || keyNodeSchema.AdditionalProperties == nil) {
 				keyNodeSchema.AdditionalProperties = new(bool)
 			}
