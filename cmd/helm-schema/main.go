@@ -339,6 +339,7 @@ func main() {
 	}
 
 	if err := command.Execute(); err != nil {
+		log.Errorf("Execution error: %s", err)
 		os.Exit(1)
 	}
 }
