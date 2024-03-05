@@ -438,7 +438,7 @@ func YamlToSchema(
 			}
 
 			// Add key to required array of parent
-			if keyNodeSchema.Required || !keyNodeSchema.HasData {
+			if keyNodeSchema.Required || (!slices.Contains(skipAutoGeneration, "required") && !keyNodeSchema.HasData) {
 				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
 			}
 
