@@ -35,16 +35,27 @@ type StringOrArrayOfString []string
 
 func (s *StringOrArrayOfString) UnmarshalYAML(value *yaml.Node) error {
 	var multi []string
-	err := value.Decode(&multi)
-	if err != nil {
+	if value.ShortTag() == arrayTag {
+		for _, v := range value.Content {
+			if v.ShortTag() == nullTag {
+				multi = append(multi, "null")
+			} else {
+				var typeStr string
+				err := v.Decode(&typeStr)
+				if err != nil {
+					return err
+				}
+				multi = append(multi, typeStr)
+			}
+		}
+		*s = multi
+	} else {
 		var single string
 		err := value.Decode(&single)
 		if err != nil {
 			return err
 		}
 		*s = []string{single}
-	} else {
-		*s = multi
 	}
 	return nil
 }
