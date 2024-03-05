@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
@@ -354,6 +355,7 @@ func YamlToSchema(
 	node *yaml.Node,
 	keepFullComment bool,
 	dontRemoveHelmDocsPrefix bool,
+	skipAutoGeneration []string,
 	parentRequiredProperties *[]string,
 ) Schema {
 	var schema Schema
@@ -372,6 +374,7 @@ func YamlToSchema(
 			node.Content[0],
 			keepFullComment,
 			dontRemoveHelmDocsPrefix,
+			skipAutoGeneration,
 			&requiredProperties,
 		).Properties
 
@@ -384,6 +387,12 @@ func YamlToSchema(
 				Type:        []string{"object"},
 				Title:       "global",
 				Description: "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+			}
+			if !slices.Contains(skipAutoGeneration, "title") {
+				schema.Properties["global"].Title = "global"
+			}
+			if !slices.Contains(skipAutoGeneration, "description") {
+				schema.Properties["global"].Description = "Global values are values that can be accessed from any chart or subchart by exactly the same name."
 			}
 		}
 
@@ -439,17 +448,17 @@ func YamlToSchema(
 			}
 
 			// If no title was set, use the key value
-			if keyNodeSchema.Title == "" {
+			if keyNodeSchema.Title == "" && !slices.Contains(skipAutoGeneration, "title") {
 				keyNodeSchema.Title = keyNode.Value
 			}
 
 			// If no description was set, use the rest of the comment as description
-			if keyNodeSchema.Description == "" {
+			if keyNodeSchema.Description == "" && !slices.Contains(skipAutoGeneration, "description") {
 				keyNodeSchema.Description = description
 			}
 
 			// If no default value was set, use the values node value as default
-			if keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
+			if !slices.Contains(skipAutoGeneration, "default") && keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
 				keyNodeSchema.Default = valueNode.Value
 			}
 
@@ -460,6 +469,7 @@ func YamlToSchema(
 					valueNode,
 					keepFullComment,
 					dontRemoveHelmDocsPrefix,
+					skipAutoGeneration,
 					&requiredProperties,
 				).Properties
 				if len(requiredProperties) > 0 {
@@ -478,7 +488,7 @@ func YamlToSchema(
 						seqSchema.AnyOf = append(seqSchema.AnyOf, &Schema{Type: itemNodeType})
 					} else {
 						itemRequiredProperties := []string{}
-						itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, &itemRequiredProperties)
+						itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
 
 						if len(itemRequiredProperties) > 0 {
 							itemSchema.RequiredProperties = itemRequiredProperties
