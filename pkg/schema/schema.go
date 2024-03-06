@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
@@ -354,6 +355,7 @@ func YamlToSchema(
 	node *yaml.Node,
 	keepFullComment bool,
 	dontRemoveHelmDocsPrefix bool,
+	skipAutoGeneration []string,
 	parentRequiredProperties *[]string,
 ) Schema {
 	var schema Schema
@@ -372,6 +374,7 @@ func YamlToSchema(
 			node.Content[0],
 			keepFullComment,
 			dontRemoveHelmDocsPrefix,
+			skipAutoGeneration,
 			&requiredProperties,
 		).Properties
 
@@ -381,9 +384,13 @@ func YamlToSchema(
 				schema.Properties = make(map[string]*Schema)
 			}
 			schema.Properties["global"] = &Schema{
-				Type:        []string{"object"},
-				Title:       "global",
-				Description: "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+				Type: []string{"object"},
+			}
+			if !slices.Contains(skipAutoGeneration, "title") {
+				schema.Properties["global"].Title = "global"
+			}
+			if !slices.Contains(skipAutoGeneration, "description") {
+				schema.Properties["global"].Description = "Global values are values that can be accessed from any chart or subchart by exactly the same name."
 			}
 		}
 
@@ -391,7 +398,9 @@ func YamlToSchema(
 			schema.RequiredProperties = requiredProperties
 		}
 		// always disable on top level
-		schema.AdditionalProperties = new(bool)
+		if !slices.Contains(skipAutoGeneration, "additionalProperties") {
+			schema.AdditionalProperties = new(bool)
+		}
 	case yaml.MappingNode:
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
@@ -429,27 +438,27 @@ func YamlToSchema(
 			}
 
 			// Add key to required array of parent
-			if keyNodeSchema.Required || !keyNodeSchema.HasData {
+			if keyNodeSchema.Required || (!slices.Contains(skipAutoGeneration, "required") && !keyNodeSchema.HasData) {
 				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
 			}
 
-			if valueNode.Kind == yaml.MappingNode &&
+			if !slices.Contains(skipAutoGeneration, "additionalProperties") && valueNode.Kind == yaml.MappingNode &&
 				(!keyNodeSchema.HasData || keyNodeSchema.AdditionalProperties == nil) {
 				keyNodeSchema.AdditionalProperties = new(bool)
 			}
 
 			// If no title was set, use the key value
-			if keyNodeSchema.Title == "" {
+			if keyNodeSchema.Title == "" && !slices.Contains(skipAutoGeneration, "title") {
 				keyNodeSchema.Title = keyNode.Value
 			}
 
 			// If no description was set, use the rest of the comment as description
-			if keyNodeSchema.Description == "" {
+			if keyNodeSchema.Description == "" && !slices.Contains(skipAutoGeneration, "description") {
 				keyNodeSchema.Description = description
 			}
 
 			// If no default value was set, use the values node value as default
-			if keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
+			if !slices.Contains(skipAutoGeneration, "default") && keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
 				keyNodeSchema.Default = valueNode.Value
 			}
 
@@ -460,6 +469,7 @@ func YamlToSchema(
 					valueNode,
 					keepFullComment,
 					dontRemoveHelmDocsPrefix,
+					skipAutoGeneration,
 					&requiredProperties,
 				).Properties
 				if len(requiredProperties) > 0 {
@@ -478,13 +488,13 @@ func YamlToSchema(
 						seqSchema.AnyOf = append(seqSchema.AnyOf, &Schema{Type: itemNodeType})
 					} else {
 						itemRequiredProperties := []string{}
-						itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, &itemRequiredProperties)
+						itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
 
 						if len(itemRequiredProperties) > 0 {
 							itemSchema.RequiredProperties = itemRequiredProperties
 						}
 
-						if itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
+						if !slices.Contains(skipAutoGeneration, "additionalProperties") && itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
 							itemSchema.AdditionalProperties = new(bool)
 						}
 
