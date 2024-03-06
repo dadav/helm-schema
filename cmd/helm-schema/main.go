@@ -130,14 +130,20 @@ func worker(
 func exec(cmd *cobra.Command, _ []string) error {
 	configureLogging()
 
+	var skipAutoGeneration, valueFileNames []string
+
 	chartSearchRoot := viper.GetString("chart-search-root")
 	dryRun := viper.GetBool("dry-run")
 	noDeps := viper.GetBool("no-dependencies")
 	keepFullComment := viper.GetBool("keep-full-comment")
 	outFile := viper.GetString("output-file")
-	valueFileNames := viper.GetStringSlice("value-files")
 	dontRemoveHelmDocsPrefix := viper.GetBool("dont-strip-helm-docs-prefix")
-	skipAutoGeneration := viper.GetStringSlice("skip-auto-generation")
+	if err := viper.UnmarshalKey("value-files", &valueFileNames); err != nil {
+		return err
+	}
+	if err := viper.UnmarshalKey("skip-auto-generation", &skipAutoGeneration); err != nil {
+		return err
+	}
 	workersCount := runtime.NumCPU() * 2
 
 	// 1. Start a producer that searches Chart.yaml and values.yaml files
