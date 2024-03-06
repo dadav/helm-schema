@@ -82,7 +82,7 @@ The `jsonschema` must be between two entries of : `# @schema`, example below :
 
 ```yaml
 # @schema
-my: annotation
+# my: annotation
 # @schema
 ```
 
