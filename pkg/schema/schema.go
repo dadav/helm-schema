@@ -384,9 +384,7 @@ func YamlToSchema(
 				schema.Properties = make(map[string]*Schema)
 			}
 			schema.Properties["global"] = &Schema{
-				Type:        []string{"object"},
-				Title:       "global",
-				Description: "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+				Type: []string{"object"},
 			}
 			if !slices.Contains(skipAutoGeneration, "title") {
 				schema.Properties["global"].Title = "global"
@@ -496,7 +494,7 @@ func YamlToSchema(
 							itemSchema.RequiredProperties = itemRequiredProperties
 						}
 
-						if itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
+						if !slices.Contains(skipAutoGeneration, "additionalProperties") && itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
 							itemSchema.AdditionalProperties = new(bool)
 						}
 
