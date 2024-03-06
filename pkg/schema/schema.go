@@ -12,6 +12,8 @@ import (
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
 	log "github.com/sirupsen/logrus"
 	yaml "gopkg.in/yaml.v3"
+
+	_ "github.com/santhosh-tekuri/jsonschema/v5/httploader"
 )
 
 const (
@@ -476,71 +478,74 @@ func YamlToSchema(
 				keyNodeSchema.Type = nodeType
 			}
 
-			// Add key to required array of parent
-			if keyNodeSchema.Required || (!skipAutoGeneration.Required && !keyNodeSchema.HasData) {
-				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
-			}
-
-			if !skipAutoGeneration.AdditionalProperties && valueNode.Kind == yaml.MappingNode &&
-				(!keyNodeSchema.HasData || keyNodeSchema.AdditionalProperties == nil) {
-				keyNodeSchema.AdditionalProperties = new(bool)
-			}
-
-			// If no title was set, use the key value
-			if keyNodeSchema.Title == "" && !skipAutoGeneration.Title {
-				keyNodeSchema.Title = keyNode.Value
-			}
-
-			// If no description was set, use the rest of the comment as description
-			if keyNodeSchema.Description == "" && !skipAutoGeneration.Description {
-				keyNodeSchema.Description = description
-			}
-
-			// If no default value was set, use the values node value as default
-			if !skipAutoGeneration.Default && keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
-				keyNodeSchema.Default = valueNode.Value
-			}
-
-			// If the value is another map and no properties are set, get them from default values
-			if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
-				requiredProperties := []string{}
-				keyNodeSchema.Properties = YamlToSchema(
-					valueNode,
-					keepFullComment,
-					dontRemoveHelmDocsPrefix,
-					skipAutoGeneration,
-					&requiredProperties,
-				).Properties
-				if len(requiredProperties) > 0 {
-					keyNodeSchema.RequiredProperties = requiredProperties
+			// only validate or default if $ref is not set
+			if keyNodeSchema.Ref == "" {
+				// Add key to required array of parent
+				if keyNodeSchema.Required || (!skipAutoGeneration.Required && !keyNodeSchema.HasData) {
+					*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
 				}
-			} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
-				// If the value is a sequence, but no items are predefined
-				var seqSchema Schema
 
-				for _, itemNode := range valueNode.Content {
-					if itemNode.Kind == yaml.ScalarNode {
-						itemNodeType, err := typeFromTag(itemNode.Tag)
-						if err != nil {
-							log.Fatal(err)
-						}
-						seqSchema.AnyOf = append(seqSchema.AnyOf, &Schema{Type: itemNodeType})
-					} else {
-						itemRequiredProperties := []string{}
-						itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
+				if !skipAutoGeneration.AdditionalProperties && valueNode.Kind == yaml.MappingNode &&
+					(!keyNodeSchema.HasData || keyNodeSchema.AdditionalProperties == nil) {
+					keyNodeSchema.AdditionalProperties = new(bool)
+				}
 
-						if len(itemRequiredProperties) > 0 {
-							itemSchema.RequiredProperties = itemRequiredProperties
-						}
+				// If no title was set, use the key value
+				if keyNodeSchema.Title == "" && !skipAutoGeneration.Title {
+					keyNodeSchema.Title = keyNode.Value
+				}
 
-						if !skipAutoGeneration.AdditionalProperties && itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
-							itemSchema.AdditionalProperties = new(bool)
-						}
+				// If no description was set, use the rest of the comment as description
+				if keyNodeSchema.Description == "" && !skipAutoGeneration.Description {
+					keyNodeSchema.Description = description
+				}
 
-						seqSchema.AnyOf = append(seqSchema.AnyOf, &itemSchema)
+				// If no default value was set, use the values node value as default
+				if !skipAutoGeneration.Default && keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
+					keyNodeSchema.Default = valueNode.Value
+				}
+
+				// If the value is another map and no properties are set, get them from default values
+				if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
+					requiredProperties := []string{}
+					keyNodeSchema.Properties = YamlToSchema(
+						valueNode,
+						keepFullComment,
+						dontRemoveHelmDocsPrefix,
+						skipAutoGeneration,
+						&requiredProperties,
+					).Properties
+					if len(requiredProperties) > 0 {
+						keyNodeSchema.RequiredProperties = requiredProperties
 					}
+				} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
+					// If the value is a sequence, but no items are predefined
+					var seqSchema Schema
+
+					for _, itemNode := range valueNode.Content {
+						if itemNode.Kind == yaml.ScalarNode {
+							itemNodeType, err := typeFromTag(itemNode.Tag)
+							if err != nil {
+								log.Fatal(err)
+							}
+							seqSchema.AnyOf = append(seqSchema.AnyOf, &Schema{Type: itemNodeType})
+						} else {
+							itemRequiredProperties := []string{}
+							itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
+
+							if len(itemRequiredProperties) > 0 {
+								itemSchema.RequiredProperties = itemRequiredProperties
+							}
+
+							if !skipAutoGeneration.AdditionalProperties && itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
+								itemSchema.AdditionalProperties = new(bool)
+							}
+
+							seqSchema.AnyOf = append(seqSchema.AnyOf, &itemSchema)
+						}
+					}
+					keyNodeSchema.Items = &seqSchema
 				}
-				keyNodeSchema.Items = &seqSchema
 			}
 			if schema.Properties == nil {
 				schema.Properties = make(map[string]*Schema)
