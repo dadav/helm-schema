@@ -62,7 +62,7 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		StringP("output-file", "o", "values.schema.json", "jsonschema file path relative to each chart directory to which jsonschema will be written")
 	cmd.PersistentFlags().
-		StringSliceP("skip-auto-generation", "k", []string{}, "do not auto-create the given fields (e.g. title,description,...)")
+		StringSliceP("skip-auto-generation", "k", []string{}, "comma separated list of fields to skip from being created by default (possible: title, description, required, default, additionalProperties)")
 
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("HELM_SCHEMA")
