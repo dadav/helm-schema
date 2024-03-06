@@ -82,6 +82,13 @@ func TestValidate(t *testing.T) {
 # @schema`,
 			expectedValid: true,
 		},
+		{
+			comment: `
+# @schema
+# $ref: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.29.2/affinity-v1.json
+# @schema`,
+			expectedValid: true,
+		},
 	}
 
 	for _, test := range tests {
