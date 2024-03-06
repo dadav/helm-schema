@@ -49,7 +49,7 @@ type Result struct {
 func worker(
 	dryRun, keepFullComment, dontRemoveHelmDocsPrefix bool,
 	valueFileNames []string,
-	skipAutoGeneration []string,
+	skipAutoGenerationConfig *schema.SkipAutoGenerationConfig,
 	outFile string,
 	queue <-chan string,
 	results chan<- Result,
@@ -121,7 +121,7 @@ func worker(
 			continue
 		}
 
-		result.Schema = schema.YamlToSchema(&values, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, nil)
+		result.Schema = schema.YamlToSchema(&values, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGenerationConfig, nil)
 
 		results <- result
 	}
@@ -145,6 +145,11 @@ func exec(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	workersCount := runtime.NumCPU() * 2
+
+	skipConfig, err := schema.NewSkipAutoGenerationConfig(skipAutoGeneration)
+	if err != nil {
+		return err
+	}
 
 	// 1. Start a producer that searches Chart.yaml and values.yaml files
 	queue := make(chan string)
@@ -172,7 +177,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 				keepFullComment,
 				dontRemoveHelmDocsPrefix,
 				valueFileNames,
-				skipAutoGeneration,
+				skipConfig,
 				outFile,
 				queue,
 				resultsChan,
@@ -194,7 +199,7 @@ loop:
 	}
 
 	// sort results with topology sort
-	results, err := util.TopSort[*Result, string](results, func(i *Result) string {
+	results, err = util.TopSort[*Result, string](results, func(i *Result) string {
 		return i.Chart.Name
 	},
 		func(d *Result) []string {

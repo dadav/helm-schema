@@ -292,6 +292,45 @@ func (s Schema) Validate() error {
 	return nil
 }
 
+var possibleSkipFields = []string{"title", "description", "required", "default", "additionalProperties"}
+
+type SkipAutoGenerationConfig struct {
+	Title, Description, Required, Default, AdditionalProperties bool
+}
+
+func NewSkipAutoGenerationConfig(flag []string) (*SkipAutoGenerationConfig, error) {
+	var config SkipAutoGenerationConfig
+
+	var invalidFlags []string
+
+	for _, fieldName := range flag {
+		if !slices.Contains(possibleSkipFields, fieldName) {
+			invalidFlags = append(invalidFlags, fieldName)
+		}
+		if fieldName == "title" {
+			config.Title = true
+		}
+		if fieldName == "description" {
+			config.Description = true
+		}
+		if fieldName == "required" {
+			config.Required = true
+		}
+		if fieldName == "default" {
+			config.Default = true
+		}
+		if fieldName == "additionalProperties" {
+			config.AdditionalProperties = true
+		}
+	}
+
+	if len(invalidFlags) != 0 {
+		return nil, fmt.Errorf("unsupported field names '%s' for skipping auto-generation", strings.Join(invalidFlags, "', '"))
+	}
+
+	return &config, nil
+}
+
 func typeFromTag(tag string) ([]string, error) {
 	switch tag {
 	case nullTag:
@@ -355,7 +394,7 @@ func YamlToSchema(
 	node *yaml.Node,
 	keepFullComment bool,
 	dontRemoveHelmDocsPrefix bool,
-	skipAutoGeneration []string,
+	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
 ) Schema {
 	var schema Schema
@@ -386,10 +425,10 @@ func YamlToSchema(
 			schema.Properties["global"] = &Schema{
 				Type: []string{"object"},
 			}
-			if !slices.Contains(skipAutoGeneration, "title") {
+			if !skipAutoGeneration.Title {
 				schema.Properties["global"].Title = "global"
 			}
-			if !slices.Contains(skipAutoGeneration, "description") {
+			if !skipAutoGeneration.Description {
 				schema.Properties["global"].Description = "Global values are values that can be accessed from any chart or subchart by exactly the same name."
 			}
 		}
@@ -398,7 +437,7 @@ func YamlToSchema(
 			schema.RequiredProperties = requiredProperties
 		}
 		// always disable on top level
-		if !slices.Contains(skipAutoGeneration, "additionalProperties") {
+		if !skipAutoGeneration.AdditionalProperties {
 			schema.AdditionalProperties = new(bool)
 		}
 	case yaml.MappingNode:
@@ -438,27 +477,27 @@ func YamlToSchema(
 			}
 
 			// Add key to required array of parent
-			if keyNodeSchema.Required || (!slices.Contains(skipAutoGeneration, "required") && !keyNodeSchema.HasData) {
+			if keyNodeSchema.Required || (!skipAutoGeneration.Required && !keyNodeSchema.HasData) {
 				*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
 			}
 
-			if !slices.Contains(skipAutoGeneration, "additionalProperties") && valueNode.Kind == yaml.MappingNode &&
+			if !skipAutoGeneration.AdditionalProperties && valueNode.Kind == yaml.MappingNode &&
 				(!keyNodeSchema.HasData || keyNodeSchema.AdditionalProperties == nil) {
 				keyNodeSchema.AdditionalProperties = new(bool)
 			}
 
 			// If no title was set, use the key value
-			if keyNodeSchema.Title == "" && !slices.Contains(skipAutoGeneration, "title") {
+			if keyNodeSchema.Title == "" && !skipAutoGeneration.Title {
 				keyNodeSchema.Title = keyNode.Value
 			}
 
 			// If no description was set, use the rest of the comment as description
-			if keyNodeSchema.Description == "" && !slices.Contains(skipAutoGeneration, "description") {
+			if keyNodeSchema.Description == "" && !skipAutoGeneration.Description {
 				keyNodeSchema.Description = description
 			}
 
 			// If no default value was set, use the values node value as default
-			if !slices.Contains(skipAutoGeneration, "default") && keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
+			if !skipAutoGeneration.Default && keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
 				keyNodeSchema.Default = valueNode.Value
 			}
 
@@ -494,7 +533,7 @@ func YamlToSchema(
 							itemSchema.RequiredProperties = itemRequiredProperties
 						}
 
-						if !slices.Contains(skipAutoGeneration, "additionalProperties") && itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
+						if !skipAutoGeneration.AdditionalProperties && itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
 							itemSchema.AdditionalProperties = new(bool)
 						}
 
