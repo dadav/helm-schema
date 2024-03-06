@@ -94,32 +94,32 @@ The `jsonschema` must be between two entries of : `# @schema`, example below :
 
 ### Available annotations
 
-| Key                    | Description                                                                                                                                                                     | Values                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `type`                 | Defines the [jsonschema-type](https://json-schema.org/understanding-json-schema/reference/type.html) of the object                                                              | `object`, `array`, `string`, `number`, `integer`, `boolean` or `null`               |
-| `title`                | Defines the [title field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=title) of the object                                               | Defaults to the key itself                                                          |
-| `description`          | Defines the [description field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=description) of the object.                                  | Defaults to the comment which has no `# @schema` prefix                             |
-| `default`              | Sets the default value and will be displayed first on the users IDE                                                                                                             |                                                                                     |
-| `properties`           | Contains a map with keys as property names and values as schema                                                                                                                 | Takes an `object`                                                                   |
-| `pattern`              | Regex pattern to test the value                                                                                                                                                 | Takes an `string`                                                                   |
-| `format`               | The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values |                                                                                     |
-| `required`             | Adds the key to the required items                                                                                                                                              | `true` or `false`                                                                   |
-| `deprecated`           | Marks the option as deprecated                                                                                                                                                  | `true` or `false`                                                                   |
-| `items`                | Contains the schema that describes the possible array items                                                                                                                     |                                                                                     |
-| `enum`                 | Multiple allowed values                                                                                                                                                         |                                                                                     |
-| `const`                | Single allowed value                                                                                                                                                            |                                                                                     |
-| `examples`             | Some examples you can provide for the end user                                                                                                                                  | Takes an `array`                                                                    |
-| `minimum`              | Minimum value. Can't be used with `exclusiveMinimum`                                                                                                                            | Must be smaller than `maximum` or `exclusiveMaximum` (if used)                      |
-| `exclusiveMinimum`     | Exclusive minimum. Can't be used with `minimum`                                                                                                                                 | Must be smaller than `maximum` or `exclusiveMaximum` (if used)                      |
-| `maximum`              | Maximum value. Can't be used with `exclusiveMaximum`                                                                                                                            | Must be bigger than `minimum` or `exclusiveMinimum` (if used)                       |
-| `exclusiveMaximum`     | Exclusive maximum value. Can't be used with `maximum`                                                                                                                           | Must be bigger than `minimum` or `exclusiveMinimum` (if used)                       |
-| `multipleOf`           | The yaml-value must be a multiple of. For example: If you set this to 10, allowed values would be 0, 10, 20, 30...                                                              | Takes an `int`                                                                      |
-| `additionalProperties` | Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`, which will be filled with keys that the `jsonschema` can't know                   | Defaults to `false` if the map is not an empty map. Takes a schema or boolean value |
-| `patternProperties`    | Contains a map which maps schemas to pattern. If properties match the patterns, the given schema is applied                                                                     | Takes an `object`                                                                   |
-| `anyOf`                | Accepts an array of schemas. None or one must apply                                                                                                                             | Takes an `array`                                                                    |
-| `oneOf`                | Accepts an array of schemas. One or more must apply                                                                                                                             | Takes an `array`                                                                    |
-| `allOf`                | Accepts an array of schemas. All must apply                                                                                                                                     | Takes an `array`                                                                    |
-| `if/then/else`         | `if` the given schema applies, `then` also apply the given schema or `else` the other schema                                                                                    |                                                                                     |
+| Key                    | Description                                                                                                                                                                                          | Values                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `type`                 | Defines the [jsonschema-type](https://json-schema.org/understanding-json-schema/reference/type.html) of the object. Multiple values are suported (e.g. `[string, integer]`) as a shortcut to `anyOf` | `object`, `array`, `string`, `number`, `integer`, `boolean` or `null`               |
+| `title`                | Defines the [title field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=title) of the object                                                                    | Defaults to the key itself                                                          |
+| `description`          | Defines the [description field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=description) of the object.                                                       | Defaults to the comment which has no `# @schema` prefix                             |
+| `default`              | Sets the default value and will be displayed first on the users IDE                                                                                                                                  |                                                                                     |
+| `properties`           | Contains a map with keys as property names and values as schema                                                                                                                                      | Takes an `object`                                                                   |
+| `pattern`              | Regex pattern to test the value                                                                                                                                                                      | Takes an `string`                                                                   |
+| `format`               | The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values                      |                                                                                     |
+| `required`             | Adds the key to the required items                                                                                                                                                                   | `true` or `false`                                                                   |
+| `deprecated`           | Marks the option as deprecated                                                                                                                                                                       | `true` or `false`                                                                   |
+| `items`                | Contains the schema that describes the possible array items                                                                                                                                          |                                                                                     |
+| `enum`                 | Multiple allowed values                                                                                                                                                                              |                                                                                     |
+| `const`                | Single allowed value                                                                                                                                                                                 |                                                                                     |
+| `examples`             | Some examples you can provide for the end user                                                                                                                                                       | Takes an `array`                                                                    |
+| `minimum`              | Minimum value. Can't be used with `exclusiveMinimum`                                                                                                                                                 | Must be smaller than `maximum` or `exclusiveMaximum` (if used)                      |
+| `exclusiveMinimum`     | Exclusive minimum. Can't be used with `minimum`                                                                                                                                                      | Must be smaller than `maximum` or `exclusiveMaximum` (if used)                      |
+| `maximum`              | Maximum value. Can't be used with `exclusiveMaximum`                                                                                                                                                 | Must be bigger than `minimum` or `exclusiveMinimum` (if used)                       |
+| `exclusiveMaximum`     | Exclusive maximum value. Can't be used with `maximum`                                                                                                                                                | Must be bigger than `minimum` or `exclusiveMinimum` (if used)                       |
+| `multipleOf`           | The yaml-value must be a multiple of. For example: If you set this to 10, allowed values would be 0, 10, 20, 30...                                                                                   | Takes an `int`                                                                      |
+| `additionalProperties` | Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`, which will be filled with keys that the `jsonschema` can't know                                        | Defaults to `false` if the map is not an empty map. Takes a schema or boolean value |
+| `patternProperties`    | Contains a map which maps schemas to pattern. If properties match the patterns, the given schema is applied                                                                                          | Takes an `object`                                                                   |
+| `anyOf`                | Accepts an array of schemas. None or one must apply                                                                                                                                                  | Takes an `array`                                                                    |
+| `oneOf`                | Accepts an array of schemas. One or more must apply                                                                                                                                                  | Takes an `array`                                                                    |
+| `allOf`                | Accepts an array of schemas. All must apply                                                                                                                                                          | Takes an `array`                                                                    |
+| `if/then/else`         | `if` the given schema applies, `then` also apply the given schema or `else` the other schema                                                                                                         |                                                                                     |
 
 ## Validation & completion
 
@@ -135,7 +135,7 @@ foo: bar
 
 ## Example
 
-This `values.yaml`:
+Some schema examples you may want to use:
 
 ```yaml
 ---
@@ -149,7 +149,23 @@ This `values.yaml`:
 # @schema
 foo: 1
 
-# If you want the value to take alternative values.
+# You can define multiple types as an array.
+# @schema
+# type: [string, integer]
+# minimum: 0
+# @schema
+fool: 1
+
+# Same as above but more verbose.
+# @schema
+# anyOf:
+#   - type: string
+#   - type: integer
+# minimum: 0
+# @schema
+foot: 1
+
+# A pattern is also possible.
 # In this case null or some string starting with foo.
 # @schema
 # anyOf:
@@ -198,7 +214,7 @@ bay:
 #     bar:
 #       type: string
 # @schema
-baz: []
+bazi: []
 ```
 
 ### helm-docs
