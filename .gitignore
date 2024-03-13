@@ -1,4 +1,4 @@
-values.yaml
-values.schema.json
+./values.yaml
+./values.schema.json
 
 dist/

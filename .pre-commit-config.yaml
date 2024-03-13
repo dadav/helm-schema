@@ -4,3 +4,14 @@ repos:
     rev: 0.10.0
     hooks:
       - id: helm-schema
+        # for all available options: helm-schema -h
+        args:
+          # directory to search recursively within for charts
+          - "--chart-search-root=."
+
+          # don't analyze dependencies
+          - "--no-dependencies"
+
+          # list of fields to skip from being created by default
+          # e.g. generate a relatively permissive schema
+          # - "--skip-auto-generation=required,additionalProperties"
