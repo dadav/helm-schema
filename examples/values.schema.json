@@ -1,0 +1,155 @@
+{
+  "properties": {
+    "global": {
+      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+      "title": "global",
+      "type": "object"
+    },
+    "service": {
+      "additionalProperties": true,
+      "properties": {
+        "conf": {
+          "patternProperties": {
+            "^API_.*": {
+              "pattern": "^api-key",
+              "type": "string"
+            },
+            "^EMAIL_.*": {
+              "format": "idn-email",
+              "type": "string"
+            }
+          },
+          "title": "conf",
+          "type": "object",
+          "examples": [
+            "API_PROVIDER_ONE: api-key-x",
+            "EMAIL_ADMIN: admin@example.org"
+          ]
+        },
+        "contact": {
+          "default": "",
+          "format": "idn-email",
+          "title": "contact",
+          "examples": [
+            "name@domain.tld"
+          ]
+        },
+        "enabled": {
+          "default": "true",
+          "description": "Type will be parsed as boolean",
+          "title": "enabled",
+          "type": "boolean"
+        },
+        "env": {
+          "properties": {
+            "ADMIN_EMAIL": {
+              "format": "idn-email",
+              "title": "ADMIN_EMAIL",
+              "type": "string",
+              "examples": [
+                "admin@example.org"
+              ]
+            },
+            "API_URL": {
+              "format": "idn-hostname",
+              "title": "API_URL",
+              "type": "string",
+              "examples": [
+                "https://api.example.org"
+              ]
+            },
+            "CONFIG_PATH": {
+              "description": "The local path to the service configuration file",
+              "title": "CONFIG_PATH",
+              "type": "string",
+              "examples": [
+                "/path/to/config"
+              ]
+            }
+          },
+          "description": "Environment variables. If you want to provide auto-completion to the user ",
+          "title": "env"
+        },
+        "hosts": {
+          "items": {
+            "properties": {
+              "host": {
+                "properties": {
+                  "url": {
+                    "format": "idn-hostname",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "description": "Will give auto-completion for the below structure \nhosts: \n - name:\n     url: my.example.org",
+          "title": "hosts",
+          "type": "array"
+        },
+        "maintainer": {
+          "default": "maintainer@example.org",
+          "const": "maintainer@example.org",
+          "title": "maintainer"
+        },
+        "name": {
+          "default": "",
+          "description": "Name of the deployed service. Defined in the schema annotation",
+          "title": "name",
+          "anyOf": [
+            {},
+            {
+              "pattern": "^foo-"
+            }
+          ]
+        },
+        "port": {
+          "default": "80",
+          "minimum": 80,
+          "maximum": 89,
+          "title": "port",
+          "type": "integer"
+        },
+        "storage": {
+          "default": "10",
+          "title": "storage",
+          "allOf": [
+            {
+              "pattern": "Gib$",
+              "type": "string"
+            },
+            {
+              "enum": [
+                "5Gib",
+                "10Gib",
+                "15Gib"
+              ]
+            }
+          ]
+        },
+        "telemetry": {
+          "default": true,
+          "title": "telemetry",
+          "type": "boolean"
+        },
+        "type": {
+          "default": "application",
+          "title": "type",
+          "enum": [
+            "application",
+            "controller",
+            "api"
+          ]
+        }
+      },
+      "title": "service",
+      "required": [
+        "enabled"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object"
+}
