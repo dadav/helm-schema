@@ -16,8 +16,8 @@ builds:
       - arm
       - arm64
     goarm:
-      - "6"
-      - "7"
+      - '6'
+      - '7'
     goos:
       - linux
       - windows
@@ -38,15 +38,14 @@ archives:
         format: zip
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: checksums.txt
 
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  name_template: '{{ .Tag }}-next'
 
 changelog:
   sort: asc
   filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
+    include:
+      - '^feat:'
+      - '^fix:'
