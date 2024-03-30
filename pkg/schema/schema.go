@@ -355,6 +355,61 @@ func typeFromTag(tag string) ([]string, error) {
 	return []string{}, fmt.Errorf("unsupported yaml tag found: %s", tag)
 }
 
+func FixRequiredProperties(schema *Schema) error {
+	requiredProperties := []string{}
+	for propName, propValue := range schema.Properties {
+		FixRequiredProperties(propValue)
+		if propValue.Required {
+			requiredProperties = append(requiredProperties, propName)
+		}
+	}
+	if len(requiredProperties) > 0 {
+		schema.RequiredProperties = requiredProperties
+	}
+
+	if schema.Then != nil {
+		FixRequiredProperties(schema.Then)
+	}
+
+	if schema.If != nil {
+		FixRequiredProperties(schema.If)
+	}
+
+	if schema.Else != nil {
+		FixRequiredProperties(schema.Else)
+	}
+
+	if schema.Items != nil {
+		FixRequiredProperties(schema.Items)
+	}
+
+	if schema.AdditionalProperties != nil {
+		if subSchema, ok := schema.AdditionalProperties.(Schema); ok {
+			FixRequiredProperties(&subSchema)
+		}
+	}
+
+	if len(schema.AnyOf) > 0 {
+		for _, subSchema := range schema.AnyOf {
+			FixRequiredProperties(subSchema)
+		}
+	}
+
+	if len(schema.AllOf) > 0 {
+		for _, subSchema := range schema.AllOf {
+			FixRequiredProperties(subSchema)
+		}
+	}
+
+	if len(schema.OneOf) > 0 {
+		for _, subSchema := range schema.OneOf {
+			FixRequiredProperties(subSchema)
+		}
+	}
+
+	return nil
+}
+
 // GetSchemaFromComment parses the annotations from the given comment
 func GetSchemaFromComment(comment string) (Schema, string, error) {
 	var result Schema
@@ -480,6 +535,10 @@ func YamlToSchema(
 
 			// only validate or default if $ref is not set
 			if keyNodeSchema.Ref == "" {
+				// Because the `required` field isn't valid jsonschema (but just a helper boolean)
+				// we must convert them to valid requiredProperties fields
+				FixRequiredProperties(&keyNodeSchema)
+
 				// Add key to required array of parent
 				if keyNodeSchema.Required || (!skipAutoGeneration.Required && !keyNodeSchema.HasData) {
 					*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
