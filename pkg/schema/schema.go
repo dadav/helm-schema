@@ -356,15 +356,21 @@ func typeFromTag(tag string) ([]string, error) {
 }
 
 func FixRequiredProperties(schema *Schema) error {
-	requiredProperties := []string{}
-	for propName, propValue := range schema.Properties {
-		FixRequiredProperties(propValue)
-		if propValue.Required {
-			requiredProperties = append(requiredProperties, propName)
+	if schema.Properties != nil {
+		requiredProperties := []string{}
+		for propName, propValue := range schema.Properties {
+			FixRequiredProperties(propValue)
+			if propValue.Required {
+				requiredProperties = append(requiredProperties, propName)
+			}
 		}
-	}
-	if len(requiredProperties) > 0 {
-		schema.RequiredProperties = requiredProperties
+		if len(requiredProperties) > 0 {
+			schema.RequiredProperties = requiredProperties
+		}
+		if !slices.Contains(schema.Type, "object") {
+			// If .Properties is set, type must be object
+			schema.Type = []string{"object"}
+		}
 	}
 
 	if schema.Then != nil {
