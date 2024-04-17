@@ -53,6 +53,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		BoolP("keep-full-comment", "s", false, "Keep the whole leading comment (default: cut at empty line)")
 	cmd.PersistentFlags().
+		BoolP("uncomment", "u", false, "Consinder yaml which is commented out")
+	cmd.PersistentFlags().
 		BoolP("dont-strip-helm-docs-prefix", "x", false, "Disable the removal of the helm-docs prefix (--)")
 	cmd.PersistentFlags().
 		BoolP("no-dependencies", "n", false, "don't analyze dependencies")
