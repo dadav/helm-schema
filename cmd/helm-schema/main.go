@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -47,7 +48,7 @@ type Result struct {
 }
 
 func worker(
-	dryRun, keepFullComment, dontRemoveHelmDocsPrefix bool,
+	dryRun, uncomment, keepFullComment, dontRemoveHelmDocsPrefix bool,
 	valueFileNames []string,
 	skipAutoGenerationConfig *schema.SkipAutoGenerationConfig,
 	outFile string,
@@ -113,6 +114,17 @@ func worker(
 			continue
 		}
 
+		// Optional preprocessing
+		if uncomment {
+			// Remove comments from valid yaml
+			content, err = util.RemoveCommentsFromYaml(bytes.NewReader(content))
+			if err != nil {
+				result.Errors = append(result.Errors, err)
+				results <- result
+				continue
+			}
+		}
+
 		var values yaml.Node
 		err = yaml.Unmarshal(content, &values)
 		if err != nil {
@@ -136,6 +148,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	dryRun := viper.GetBool("dry-run")
 	noDeps := viper.GetBool("no-dependencies")
 	keepFullComment := viper.GetBool("keep-full-comment")
+	uncomment := viper.GetBool("uncomment")
 	outFile := viper.GetString("output-file")
 	dontRemoveHelmDocsPrefix := viper.GetBool("dont-strip-helm-docs-prefix")
 	if err := viper.UnmarshalKey("value-files", &valueFileNames); err != nil {
@@ -174,6 +187,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 			defer wg.Done()
 			worker(
 				dryRun,
+				uncomment,
 				keepFullComment,
 				dontRemoveHelmDocsPrefix,
 				valueFileNames,

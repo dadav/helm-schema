@@ -76,6 +76,7 @@ Flags:
   -o, --output-file string            "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
   -f, --value-files strings           "filenames to check for chart values (default [values.yaml])"
   -k, --skip-auto-generation strings  "skip the auto generation for these fields (default [])"
+  -u, --uncomment                     "Consinder yaml which is commented out"
   -v, --version                       "version for helm-schema"
 ```
 

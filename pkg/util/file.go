@@ -1,8 +1,12 @@
 package util
 
 import (
+	"bufio"
 	"io"
+	"regexp"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ReadFileAndFixNewline reads the content of a io.Reader and replaces \r\n with \n
@@ -11,5 +15,103 @@ func ReadFileAndFixNewline(reader io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(strings.Replace(string(content), "\r\n", "\n", -1)), nil
+	return []byte(strings.ReplaceAll(string(content), "\r\n", "\n")), nil
+}
+
+func appendAndNL(to, from *[]byte) {
+	if from != nil {
+		*to = append(*to, *from...)
+	}
+	*to = append(*to, '\n')
+}
+
+func appendAndNLStr(to *[]byte, from string) {
+	*to = append(*to, from...)
+	*to = append(*to, '\n')
+}
+
+// RemoveCommentsFromYaml tries to remove comments if they contain valid yaml
+func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
+	result := make([]byte, 0)
+	buff := make([]byte, 0)
+	scanner := bufio.NewScanner(reader)
+
+	commentMatcher := regexp.MustCompile(`^\s*#\s*`)
+	schemaMatcher := regexp.MustCompile(`^\s*#\s@schema\s*`)
+
+	var line string
+	var inCode, inSchema bool
+	var codeIndention int
+	var unknownYaml interface{}
+
+	for scanner.Scan() {
+		line = scanner.Text()
+
+		// If the line is empty and we are parsing a block of potential yaml,
+		// the parsed block of yaml is "finished" and should be added to the
+		// result
+		if line == "" && inCode {
+			appendAndNL(&result, &buff)
+			appendAndNLStr(&result, line)
+			// reset
+			inCode = false
+			buff = make([]byte, 0)
+			continue
+		}
+
+		// Line contains @schema
+		// The following lines will be added to result
+		if schemaMatcher.Match([]byte(line)) {
+			inSchema = !inSchema
+			appendAndNLStr(&result, line)
+			continue
+		}
+
+		// Inside a @schema block
+		if inSchema {
+			appendAndNLStr(&result, line)
+			continue
+		}
+
+		// Havent found a potential yaml block yet
+		if !inCode {
+			if match := commentMatcher.Find([]byte(line)); match != nil {
+				codeIndention = len(match)
+				inCode = true
+			}
+		}
+
+		// Try if this line is valid yaml
+		if inCode {
+			if commentMatcher.Match([]byte(line)) {
+				// Strip the commet away
+				strippedLine := line[codeIndention:]
+				// add it to the already parsed valid yaml
+				appendAndNLStr(&buff, strippedLine)
+				// check if the new block is still valid yaml
+				err := yaml.Unmarshal(buff, &unknownYaml)
+				if err != nil {
+					// Invalid yaml found,
+					// Remove the stripped line again
+					buff = buff[:len(buff)-len(strippedLine)-1]
+					// and add the commented line instead
+					appendAndNLStr(&buff, line)
+				}
+				// its still valid yaml
+				continue
+			}
+
+			// If the line is not a comment it must be yaml
+			appendAndNLStr(&buff, line)
+			continue
+		}
+		// line is valid yaml
+		appendAndNLStr(&result, line)
+	}
+
+	if len(buff) > 0 {
+		appendAndNL(&result, &buff)
+	}
+
+	return result, nil
 }
