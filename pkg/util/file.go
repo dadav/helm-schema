@@ -37,6 +37,7 @@ func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 	scanner := bufio.NewScanner(reader)
 
 	commentMatcher := regexp.MustCompile(`^\s*#\s*`)
+	commentYamlMapMatcher := regexp.MustCompile(`^(\s*#\s*)[^:]+:.*$`)
 	schemaMatcher := regexp.MustCompile(`^\s*#\s@schema\s*`)
 
 	var line string
@@ -75,8 +76,8 @@ func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 
 		// Havent found a potential yaml block yet
 		if !inCode {
-			if match := commentMatcher.Find([]byte(line)); match != nil {
-				codeIndention = len(match)
+			if matches := commentYamlMapMatcher.FindStringSubmatch(line); matches != nil {
+				codeIndention = len(matches[1])
 				inCode = true
 			}
 		}
