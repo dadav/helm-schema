@@ -43,7 +43,7 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	}
 
 	logLevelUsage := fmt.Sprintf(
-		"Level of logs that should printed, one of (%s)",
+		"level of logs that should printed, one of (%s)",
 		strings.Join(possibleLogLevels(), ", "),
 	)
 	cmd.PersistentFlags().
@@ -51,11 +51,11 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		BoolP("dry-run", "d", false, "don't actually create files just print to stdout passed")
 	cmd.PersistentFlags().
-		BoolP("keep-full-comment", "s", false, "Keep the whole leading comment (default: cut at empty line)")
+		BoolP("keep-full-comment", "s", false, "keep the whole leading comment (default: cut at empty line)")
 	cmd.PersistentFlags().
-		BoolP("uncomment", "u", false, "Consinder yaml which is commented out")
+		BoolP("uncomment", "u", false, "consider yaml which is commented out")
 	cmd.PersistentFlags().
-		BoolP("dont-strip-helm-docs-prefix", "x", false, "Disable the removal of the helm-docs prefix (--)")
+		BoolP("dont-strip-helm-docs-prefix", "x", false, "disable the removal of the helm-docs prefix (--)")
 	cmd.PersistentFlags().
 		BoolP("no-dependencies", "n", false, "don't analyze dependencies")
 	cmd.PersistentFlags().StringP("log-level", "l", "info", logLevelUsage)
