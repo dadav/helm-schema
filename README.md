@@ -67,16 +67,16 @@ The binary has the following options:
 ```sh
 Flags:
   -c, --chart-search-root string      "directory to search recursively within for charts (default ".")"
-  -x, --dont-strip-helm-docs-prefix   "Disable the removal of the helm-docs prefix (--)"
+  -x, --dont-strip-helm-docs-prefix   "disable the removal of the helm-docs prefix (--)"
   -d, --dry-run                       "don't actually create files just print to stdout passed"
   -h, --help                          "help for helm-schema"
-  -s, --keep-full-comment             "Keep the whole leading comment (default: cut at empty line)"
-  -l, --log-level string              "Level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
+  -s, --keep-full-comment             "keep the whole leading comment (default: cut at empty line)"
+  -l, --log-level string              "level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
   -n, --no-dependencies               "don't analyze dependencies"
   -o, --output-file string            "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
   -f, --value-files strings           "filenames to check for chart values (default [values.yaml])"
   -k, --skip-auto-generation strings  "skip the auto generation for these fields (default [])"
-  -u, --uncomment                     "Consinder yaml which is commented out"
+  -u, --uncomment                     "consider yaml which is commented out"
   -v, --version                       "version for helm-schema"
 ```
 
