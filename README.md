@@ -66,6 +66,7 @@ The binary has the following options:
 
 ```sh
 Flags:
+  -r, --add-schema-reference          "add reference to schema in values.yaml if not found"
   -c, --chart-search-root string      "directory to search recursively within for charts (default ".")"
   -x, --dont-strip-helm-docs-prefix   "disable the removal of the helm-docs prefix (--)"
   -d, --dry-run                       "don't actually create files just print to stdout passed"
@@ -145,6 +146,8 @@ You'll have to place this line at the top of your `values.yaml` (`$schema=<path-
 # -- This is an example description
 foo: bar
 ```
+
+You can use the `-r` flag to make sure this line exists.
 
 > [!NOTE]
 > You can also point to an online available schema, if you upload a version of yours and want other to be able to implement it.

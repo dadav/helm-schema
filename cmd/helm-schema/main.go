@@ -48,7 +48,7 @@ type Result struct {
 }
 
 func worker(
-	dryRun, uncomment, keepFullComment, dontRemoveHelmDocsPrefix bool,
+	dryRun, uncomment, addSchemaReference, keepFullComment, dontRemoveHelmDocsPrefix bool,
 	valueFileNames []string,
 	skipAutoGenerationConfig *schema.SkipAutoGenerationConfig,
 	outFile string,
@@ -114,6 +114,19 @@ func worker(
 			continue
 		}
 
+		// Check if we need to add a schema reference
+		if addSchemaReference {
+			schemaRef := `# yaml-language-server: $schema=values.schema.json`
+			if !strings.Contains(string(content), schemaRef) {
+				err = util.InsertLineToFile(schemaRef, valuesPath)
+				if err != nil {
+					result.Errors = append(result.Errors, err)
+					results <- result
+					continue
+				}
+			}
+		}
+
 		// Optional preprocessing
 		if uncomment {
 			// Remove comments from valid yaml
@@ -147,6 +160,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	chartSearchRoot := viper.GetString("chart-search-root")
 	dryRun := viper.GetBool("dry-run")
 	noDeps := viper.GetBool("no-dependencies")
+	addSchemaReference := viper.GetBool("add-schema-reference")
 	keepFullComment := viper.GetBool("keep-full-comment")
 	uncomment := viper.GetBool("uncomment")
 	outFile := viper.GetString("output-file")
@@ -188,6 +202,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 			worker(
 				dryRun,
 				uncomment,
+				addSchemaReference,
 				keepFullComment,
 				dontRemoveHelmDocsPrefix,
 				valueFileNames,

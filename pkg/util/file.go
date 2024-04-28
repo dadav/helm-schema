@@ -3,6 +3,7 @@ package util
 import (
 	"bufio"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 
@@ -28,6 +29,27 @@ func appendAndNL(to, from *[]byte) {
 func appendAndNLStr(to *[]byte, from string) {
 	*to = append(*to, from...)
 	*to = append(*to, '\n')
+}
+
+// InsertLinetoFile inserts a line to the beginning of a file
+func InsertLineToFile(line, file string) error {
+	fileInfo, err := os.Stat(file)
+	if err != nil {
+		return err
+	}
+	perm := fileInfo.Mode().Perm()
+	content, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	eol := "\n"
+	if len(content) >= 2 && content[len(content)-2] == '\r' && content[len(content)-1] == '\n' {
+		eol = "\r\n"
+	}
+
+	newContent := line + eol + string(content)
+	return os.WriteFile(file, []byte(newContent), perm)
 }
 
 // RemoveCommentsFromYaml tries to remove comments if they contain valid yaml
