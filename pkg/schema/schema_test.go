@@ -45,6 +45,20 @@ func TestValidate(t *testing.T) {
 		{
 			comment: `
 # @schema
+# const: "hello"
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
+# const: true
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
 # format: ipv4
 # @schema`,
 			expectedValid: true,
