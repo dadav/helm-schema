@@ -121,7 +121,7 @@ type Schema struct {
 	Maximum              *int                  `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
 	Else                 *Schema               `yaml:"else,omitempty"                 json:"else,omitempty"`
 	Pattern              string                `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
-	Const                string                `yaml:"const,omitempty"                json:"const,omitempty"`
+	Const                interface{}           `yaml:"const,omitempty"                json:"const,omitempty"`
 	Ref                  string                `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
 	Schema               string                `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
 	Id                   string                `yaml:"$id,omitempty"                  json:"$id,omitempty"`
@@ -233,7 +233,7 @@ func (s Schema) Validate() error {
 		return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
 	}
 
-	if s.Const != "" && !s.Type.IsEmpty() {
+	if s.Const != nil && !s.Type.IsEmpty() {
 		return errors.New("if your are using const, you can't use type")
 	}
 
