@@ -58,6 +58,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 		BoolP("dont-strip-helm-docs-prefix", "x", false, "disable the removal of the helm-docs prefix (--)")
 	cmd.PersistentFlags().
 		BoolP("no-dependencies", "n", false, "don't analyze dependencies")
+	cmd.PersistentFlags().
+		BoolP("add-schema-reference", "r", false, "add reference to schema in values.yaml if not found")
 	cmd.PersistentFlags().StringP("log-level", "l", "info", logLevelUsage)
 	cmd.PersistentFlags().
 		StringSliceP("value-files", "f", []string{"values.yaml"}, "filenames to check for chart values")
