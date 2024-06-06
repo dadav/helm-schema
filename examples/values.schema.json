@@ -68,7 +68,8 @@
             }
           },
           "description": "Environment variables. If you want to provide auto-completion to the user ",
-          "title": "env"
+          "title": "env",
+          "type": "object"
         },
         "hosts": {
           "items": {
@@ -113,20 +114,14 @@
           "type": "integer"
         },
         "storage": {
-          "default": "10",
+          "default": "10Gib",
+          "pattern": "^[1-9][0-9]*Gib$",
           "title": "storage",
-          "allOf": [
-            {
-              "pattern": "Gib$",
-              "type": "string"
-            },
-            {
-              "enum": [
-                "5Gib",
-                "10Gib",
-                "15Gib"
-              ]
-            }
+          "type": "string",
+          "examples": [
+            "5Gib",
+            "10Gib",
+            "20Gib"
           ]
         },
         "telemetry": {

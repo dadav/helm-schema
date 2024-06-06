@@ -175,10 +175,9 @@ foo: []
 
 ## Dependencies
 
-Per default, `helm-schema` will try to also create the schemas for the dependencies in the charts directory. These schemas will be added as properties in the main schema, but the `requiredProperties` field will be nullified. Otherwise you would have to always overwrite all the
-required fields.
+Per default, `helm-schema` will try to also create the schemas for the dependencies in their respective chart directory. These schemas will be merged as properties in the main schema, but the `requiredProperties` field will be nullified, otherwise you would have to always overwrite all the required fields.
 
-If you don't want to generate `jsonschema` for dependencies, you can use the `-n, --no-dependencies` option.
+If you don't want to generate `jsonschema` for chart dependencies, you can use the `-n, --no-dependencies` option to only generate the `values.schema.json` for your parent chart(s)
 
 ## Limitations
 
@@ -200,6 +199,28 @@ Some annotation examples you may want to use, to help you get started!
 
 > [!NOTE]
 > See how the schema behaves with live examples : [values.yaml](./examples/values.yaml)
+
+Below a snippet to test it out, with the current options `helm-schema` will not analyze dependencies (`-n`) and will omit the `additionalProperties` (`-k`, when not explicitly defined) in the generated schema. It will start looking for `Chart.yaml` and `values.yaml` files in `examples/` (`-c`)
+
+```sh
+cd examples
+helm-schema -n -k additionalProperties
+
+# or
+
+helm-schema -c examples -n -k additionalProperties
+```
+
+If you'd like to use `helm-schema` on your chart dependencies as well, you have to build and unpack them before. You'll avoid the "missing dependency" error message.
+
+```sh
+# go where your Chart.lock/yaml is located
+cd <chart-name>
+
+# build dependencies and untar them
+helm dep build
+ls charts/*.tgz |xargs -n1 tar -C charts/ -xzf
+```
 
 #### `type`
 

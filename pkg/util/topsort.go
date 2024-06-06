@@ -36,7 +36,7 @@ func TopSort[R any, I comparable](results []R, identify func(i R) I, dependencie
 				g = append(g, depNamesToResults[name])
 			}
 
-			return g, &CircularError{fmt.Sprintf("circular or missing dependency found: %v", depNamesToNames)}
+			return g, &CircularError{fmt.Sprintf("circular or missing dependency found: %v - Please build and untar all your helm dependencies: helm dep build && ls charts/*.tgz |xargs -n1 tar -C charts/ -xzf", depNamesToNames)}
 		}
 
 		for name := range readySet.Iter() {

@@ -2,3 +2,4 @@
 ./values.schema.json
 
 dist/
+.vscode
