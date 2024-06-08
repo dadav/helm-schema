@@ -7,46 +7,52 @@ import (
 )
 
 // TopSort uses topological sorting on the given array of generic type R
-func TopSort[R any, I comparable](results []R, identify func(i R) I, dependencies func(d R) []I) ([]R, error) {
-	depNamesToResults := make(map[I]R)
-	depNamesToNames := make(map[I]mapset.Set[I])
+func TopSort[R any, I comparable](results []R, identify func(i R) I, getDependenciesFromResult func(d R) []I) ([]R, error) {
+	lookup := make(map[I]R)
+	todo := make(map[I]mapset.Set[I])
 
 	for _, result := range results {
-		depNamesToResults[identify(result)] = result
-		dependencySet := mapset.NewSet[I]()
-		for _, dep := range dependencies(result) {
-			dependencySet.Add(dep)
+		lookup[identify(result)] = result
+		dependencies := mapset.NewSet[I]()
+		for _, dep := range getDependenciesFromResult(result) {
+			dependencies.Add(dep)
 		}
-		depNamesToNames[identify(result)] = dependencySet
+		todo[identify(result)] = dependencies
 	}
 
 	var sorted []R
 
-	for len(depNamesToNames) != 0 {
-		readySet := mapset.NewSet[I]()
-		for name, deps := range depNamesToNames {
+	// if we have work left
+	for len(todo) != 0 {
+		ready := mapset.NewSet[I]()
+		for name, deps := range todo {
+			// if no further deps found (end of the dep tree), this chart is ready
 			if deps.Cardinality() == 0 {
-				readySet.Add(name)
+				ready.Add(name)
 			}
 		}
 
-		if readySet.Cardinality() == 0 {
-			var g []R
-			for name := range depNamesToNames {
-				g = append(g, depNamesToResults[name])
+		// if no items are ready, we are stuck
+		if ready.Cardinality() == 0 {
+			// append unsorted to sorted items and return them
+			for name := range todo {
+				sorted = append(sorted, lookup[name])
 			}
 
-			return g, &CircularError{fmt.Sprintf("circular or missing dependency found: %v - Please build and untar all your helm dependencies: helm dep build && ls charts/*.tgz |xargs -n1 tar -C charts/ -xzf", depNamesToNames)}
+			return sorted, &CircularError{fmt.Sprintf("circular or missing dependency found: %v - Please build and untar all your helm dependencies: helm dep build && ls charts/*.tgz |xargs -n1 tar -C charts/ -xzf", todo)}
 		}
 
-		for name := range readySet.Iter() {
-			delete(depNamesToNames, name)
-			sorted = append(sorted, depNamesToResults[name])
+		// remove ready items from todo list and add to sorted list
+		for name := range ready.Iter() {
+			delete(todo, name)
+			sorted = append(sorted, lookup[name])
 		}
 
-		for name, deps := range depNamesToNames {
-			diff := deps.Difference(readySet)
-			depNamesToNames[name] = diff
+		// remove ready items from deps list too
+		for name, deps := range todo {
+			// Problem!
+			diff := deps.Difference(ready)
+			todo[name] = diff
 		}
 	}
 	return sorted, nil
