@@ -229,19 +229,19 @@ loop:
 
 	// sort results with topology sort (only if we're checking the dependencies)
 	if !noDeps {
+		// sort results with topology sort
 		results, err = util.TopSort[*Result, string](results, func(i *Result) string {
-			return i.Chart.Name
+			// the chart is identified by its name and version
+			return fmt.Sprintf("%s-%s", i.Chart.Name, i.Chart.Version)
 		},
 			func(d *Result) []string {
 				deps := []string{}
-				if d.Chart.Dependencies != nil {
-					for _, dep := range d.Chart.Dependencies {
-						deps = append(deps, dep.Name)
-					}
+				for _, dep := range d.Chart.Dependencies {
+					// the dependencies must be identified the same way as above
+					deps = append(deps, fmt.Sprintf("%s-%s", dep.Name, dep.Version))
 				}
 				return deps
-			},
-		)
+			})
 		if err != nil {
 			if _, ok := err.(*util.CircularError); !ok {
 				log.Errorf("Error while sorting results: %s", err)
@@ -373,7 +373,7 @@ loop:
 		}
 	}
 	if foundErrors {
-		return errors.New("Some errors were found")
+		return errors.New("some errors were found")
 	}
 	return nil
 }
