@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
-	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 	log "github.com/sirupsen/logrus"
-	yaml "gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3"
 
 	_ "github.com/santhosh-tekuri/jsonschema/v5/httploader"
 )
@@ -567,7 +568,7 @@ func YamlToSchema(
 
 				// If no default value was set, use the values node value as default
 				if !skipAutoGeneration.Default && keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
-					keyNodeSchema.Default = valueNode.Value
+					keyNodeSchema.Default = castNodeValueByType(valueNode.Value, keyNodeSchema.Type)
 				}
 
 				// If the value is another map and no properties are set, get them from default values
@@ -620,4 +621,29 @@ func YamlToSchema(
 	}
 
 	return schema
+}
+
+func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
+	if len(fieldType) == 0 {
+		return rawValue
+	}
+
+	// Consider the first type only for now
+	switch fieldType[0] {
+	case "boolean":
+		return rawValue == "true"
+	case "integer":
+		v, err := strconv.Atoi(rawValue)
+		if err != nil {
+			log.Fatalf("Error while converting %s to integer: %v", rawValue, err)
+		}
+		return v
+	case "number":
+		v, err := strconv.ParseFloat(rawValue, 64)
+		if err != nil {
+			log.Fatalf("Error while converting %s to float: %v", rawValue, err)
+		}
+		return v
+	}
+	return rawValue
 }
