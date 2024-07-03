@@ -618,6 +618,7 @@ func YamlToSchema(
 			}
 			schema.Properties[keyNode.Value] = &keyNodeSchema
 		}
+		FixRequiredProperties(&schema)
 	}
 
 	return schema
