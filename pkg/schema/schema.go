@@ -542,9 +542,6 @@ func YamlToSchema(
 
 			// only validate or default if $ref is not set
 			if keyNodeSchema.Ref == "" {
-				// Because the `required` field isn't valid jsonschema (but just a helper boolean)
-				// we must convert them to valid requiredProperties fields
-				FixRequiredProperties(&keyNodeSchema)
 
 				// Add key to required array of parent
 				if keyNodeSchema.Required || (!skipAutoGeneration.Required && !keyNodeSchema.HasData) {
@@ -611,6 +608,10 @@ func YamlToSchema(
 						}
 					}
 					keyNodeSchema.Items = &seqSchema
+
+					// Because the `required` field isn't valid jsonschema (but just a helper boolean)
+					// we must convert them to valid requiredProperties fields
+					FixRequiredProperties(&keyNodeSchema)
 				}
 			}
 			if schema.Properties == nil {
