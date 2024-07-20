@@ -1,4 +1,4 @@
-package util
+package schema
 
 type CircularError struct {
 	msg string

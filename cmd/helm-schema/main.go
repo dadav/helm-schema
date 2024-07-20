@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -13,11 +12,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	yaml "gopkg.in/yaml.v3"
 
-	"github.com/dadav/helm-schema/pkg/chart"
 	"github.com/dadav/helm-schema/pkg/schema"
-	"github.com/dadav/helm-schema/pkg/util"
 )
 
 func searchFiles(startPath, fileName string, queue chan<- string, errs chan<- error) {
@@ -36,119 +32,6 @@ func searchFiles(startPath, fileName string, queue chan<- string, errs chan<- er
 	})
 	if err != nil {
 		errs <- err
-	}
-}
-
-type Result struct {
-	ChartPath  string
-	ValuesPath string
-	Chart      *chart.ChartFile
-	Schema     schema.Schema
-	Errors     []error
-}
-
-func worker(
-	dryRun, uncomment, addSchemaReference, keepFullComment, dontRemoveHelmDocsPrefix bool,
-	valueFileNames []string,
-	skipAutoGenerationConfig *schema.SkipAutoGenerationConfig,
-	outFile string,
-	queue <-chan string,
-	results chan<- Result,
-) {
-	for chartPath := range queue {
-		result := Result{ChartPath: chartPath}
-
-		chartBasePath := filepath.Dir(chartPath)
-		file, err := os.Open(chartPath)
-		if err != nil {
-			result.Errors = append(result.Errors, err)
-			results <- result
-			continue
-		}
-
-		chart, err := chart.ReadChart(file)
-		if err != nil {
-			result.Errors = append(result.Errors, err)
-			results <- result
-			continue
-		}
-		result.Chart = &chart
-
-		var valuesPath string
-		var valuesFound bool
-		errorsWeMaybeCanIgnore := []error{}
-
-		for _, possibleValueFileName := range valueFileNames {
-			valuesPath = filepath.Join(chartBasePath, possibleValueFileName)
-			_, err := os.Stat(valuesPath)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					errorsWeMaybeCanIgnore = append(errorsWeMaybeCanIgnore, err)
-				}
-				continue
-			}
-			valuesFound = true
-			break
-		}
-
-		if !valuesFound {
-			for _, err := range errorsWeMaybeCanIgnore {
-				result.Errors = append(result.Errors, err)
-			}
-			result.Errors = append(result.Errors, errors.New("No values file found."))
-			results <- result
-			continue
-		}
-		result.ValuesPath = valuesPath
-
-		valuesFile, err := os.Open(valuesPath)
-		if err != nil {
-			result.Errors = append(result.Errors, err)
-			results <- result
-			continue
-		}
-		content, err := util.ReadFileAndFixNewline(valuesFile)
-		if err != nil {
-			result.Errors = append(result.Errors, err)
-			results <- result
-			continue
-		}
-
-		// Check if we need to add a schema reference
-		if addSchemaReference {
-			schemaRef := `# yaml-language-server: $schema=values.schema.json`
-			if !strings.Contains(string(content), schemaRef) {
-				err = util.InsertLineToFile(schemaRef, valuesPath)
-				if err != nil {
-					result.Errors = append(result.Errors, err)
-					results <- result
-					continue
-				}
-			}
-		}
-
-		// Optional preprocessing
-		if uncomment {
-			// Remove comments from valid yaml
-			content, err = util.RemoveCommentsFromYaml(bytes.NewReader(content))
-			if err != nil {
-				result.Errors = append(result.Errors, err)
-				results <- result
-				continue
-			}
-		}
-
-		var values yaml.Node
-		err = yaml.Unmarshal(content, &values)
-		if err != nil {
-			result.Errors = append(result.Errors, err)
-			results <- result
-			continue
-		}
-
-		result.Schema = schema.YamlToSchema(&values, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGenerationConfig, nil)
-
-		results <- result
 	}
 }
 
@@ -180,8 +63,8 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 	// 1. Start a producer that searches Chart.yaml and values.yaml files
 	queue := make(chan string)
-	resultsChan := make(chan Result)
-	results := []*Result{}
+	resultsChan := make(chan schema.Result)
+	results := []*schema.Result{}
 	errs := make(chan error)
 	done := make(chan struct{})
 
@@ -199,7 +82,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 		go func() {
 			defer wg.Done()
-			worker(
+			schema.Worker(
 				dryRun,
 				uncomment,
 				addSchemaReference,
@@ -230,20 +113,9 @@ loop:
 	// sort results with topology sort (only if we're checking the dependencies)
 	if !noDeps {
 		// sort results with topology sort
-		results, err = util.TopSort[*Result, string](results, func(i *Result) string {
-			// the chart is identified by its name and version
-			return fmt.Sprintf("%s-%s", i.Chart.Name, i.Chart.Version)
-		},
-			func(d *Result) []string {
-				deps := []string{}
-				for _, dep := range d.Chart.Dependencies {
-					// the dependencies must be identified the same way as above
-					deps = append(deps, fmt.Sprintf("%s-%s", dep.Name, dep.Version))
-				}
-				return deps
-			})
+		results, err = schema.TopoSort(results)
 		if err != nil {
-			if _, ok := err.(*util.CircularError); !ok {
+			if _, ok := err.(*schema.CircularError); !ok {
 				log.Errorf("Error while sorting results: %s", err)
 				return err
 			} else {
@@ -271,7 +143,7 @@ loop:
 		}
 	}
 
-	chartNameToResult := make(map[string]*Result)
+	chartNameToResult := make(map[string]*schema.Result)
 	foundErrors := false
 
 	// process results

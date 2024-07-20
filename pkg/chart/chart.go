@@ -8,9 +8,13 @@ import (
 )
 
 type Dependency struct {
-	Name      string `yaml:"name"`
-	Version   string `yaml:"version"`
-	Condition string `yaml:"condition"`
+	Name       string `yaml:"name"`
+	Version    string `yaml:"version"`
+	Condition  string `yaml:"condition,omitempty"`
+	Repository string `yaml:"repository,omitempty"`
+	Alias      string `yaml:"alias,omitempty"`
+	// Tags         []string `yaml:"tags,omitempty"`
+	// ImportValues []string `yaml:"import-values,omitempty"`
 }
 
 // Maintainer describes a Chart maintainer.
