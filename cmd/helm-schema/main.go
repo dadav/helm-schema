@@ -214,7 +214,11 @@ loop:
 						// so every required check will be disabled
 						depSchema.DisableRequiredProperties()
 
-						result.Schema.Properties[dep.Name] = &depSchema
+						if dep.Alias != "" {
+							result.Schema.Properties[dep.Alias] = &depSchema
+						} else {
+							result.Schema.Properties[dep.Name] = &depSchema
+						}
 
 					} else {
 						log.Warnf("Dependency (%s->%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dependency build & untar the charts.", result.Chart.Name, dep.Name)
