@@ -237,9 +237,11 @@ loop:
 			continue
 		}
 
+		jsonStr = append(jsonStr, '\n')
+
 		if dryRun {
 			log.Infof("Printing jsonschema for %s chart (%s)", result.Chart.Name, result.ChartPath)
-			fmt.Printf("%s\n", jsonStr)
+			fmt.Print(jsonStr)
 		} else {
 			chartBasePath := filepath.Dir(result.ChartPath)
 			if err := os.WriteFile(filepath.Join(chartBasePath, outFile), jsonStr, 0644); err != nil {
