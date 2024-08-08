@@ -48,6 +48,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	uncomment := viper.GetBool("uncomment")
 	outFile := viper.GetString("output-file")
 	dontRemoveHelmDocsPrefix := viper.GetBool("dont-strip-helm-docs-prefix")
+	appendNewline := viper.GetBool("append-newline")
 	if err := viper.UnmarshalKey("value-files", &valueFileNames); err != nil {
 		return err
 	}
@@ -237,9 +238,17 @@ loop:
 			continue
 		}
 
+		if appendNewline {
+			jsonStr = append(jsonStr, '\n')
+		}
+
 		if dryRun {
 			log.Infof("Printing jsonschema for %s chart (%s)", result.Chart.Name, result.ChartPath)
-			fmt.Printf("%s\n", jsonStr)
+			if appendNewline {
+				fmt.Printf("%s", jsonStr)
+			} else {
+				fmt.Printf("%s\n", jsonStr)
+			}
 		} else {
 			chartBasePath := filepath.Dir(result.ChartPath)
 			if err := os.WriteFile(filepath.Join(chartBasePath, outFile), jsonStr, 0644); err != nil {
