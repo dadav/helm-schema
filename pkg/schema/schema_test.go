@@ -16,7 +16,7 @@ func TestValidate(t *testing.T) {
 		{
 			comment: `
 # @schema
-# multipleOf: true
+# multipleOf: 0
 # @schema`,
 			expectedValid: false,
 		},
