@@ -51,6 +51,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		BoolP("dry-run", "d", false, "don't actually create files just print to stdout passed")
 	cmd.PersistentFlags().
+		BoolP("append-newline", "a", false, "append newline to generated jsonschema at the end of the file")
+	cmd.PersistentFlags().
 		BoolP("keep-full-comment", "s", false, "keep the whole leading comment (default: cut at empty line)")
 	cmd.PersistentFlags().
 		BoolP("uncomment", "u", false, "consider yaml which is commented out")

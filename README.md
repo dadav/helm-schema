@@ -67,6 +67,7 @@ The binary has the following options:
 ```sh
 Flags:
   -r, --add-schema-reference          "add reference to schema in values.yaml if not found"
+  -a, --append-newline                 append newline to generated jsonschema at the end of the file
   -c, --chart-search-root string      "directory to search recursively within for charts (default ".")"
   -x, --dont-strip-helm-docs-prefix   "disable the removal of the helm-docs prefix (--)"
   -d, --dry-run                       "don't actually create files just print to stdout passed"
