@@ -232,7 +232,9 @@ func NewSchema(schemaType string) *Schema {
 func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 	// Create an alias type to avoid recursion
 	type schemaAlias Schema
-	alias := &schemaAlias{}
+	alias := new(schemaAlias)
+	// copy all existing fields
+	*alias = schemaAlias(*s)
 
 	// Unmarshal known fields into alias
 	if err := node.Decode(alias); err != nil {
