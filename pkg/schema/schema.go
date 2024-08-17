@@ -133,6 +133,7 @@ type Schema struct {
 	AnyOf                []*Schema             `yaml:"anyOf,omitempty"                json:"anyOf,omitempty"`
 	AllOf                []*Schema             `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
 	OneOf                []*Schema             `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
+	Not                  *Schema               `yaml:"not,omitempty"                json:"not,omitempty"`
 	RequiredProperties   []string              `yaml:"-"                              json:"required,omitempty"`
 	Examples             []string              `yaml:"examples,omitempty"             json:"examples,omitempty"`
 	Enum                 []string              `yaml:"enum,omitempty"                 json:"enum,omitempty"`
