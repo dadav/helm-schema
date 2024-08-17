@@ -84,6 +84,14 @@ func TestValidate(t *testing.T) {
 		{
 			comment: `
 # @schema
+# not:
+#   type: "null"
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
 # anyOf:
 #   - type: "null"
 #   - format: date-time
