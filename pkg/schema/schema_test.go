@@ -74,6 +74,20 @@ func TestValidate(t *testing.T) {
 		{
 			comment: `
 # @schema
+# readOnly: true
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
+# writeOnly: true
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
 # anyOf:
 #   - type: "null"
 #   - format: date-time

@@ -139,6 +139,8 @@ type Schema struct {
 	Enum                 []string              `yaml:"enum,omitempty"                 json:"enum,omitempty"`
 	HasData              bool                  `yaml:"-"                              json:"-"`
 	Deprecated           bool                  `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
+	ReadOnly             bool                  `yaml:"readOnly,omitempty"           json:"readOnly,omitempty"`
+	WriteOnly            bool                  `yaml:"writeOnly,omitempty"           json:"writeOnly,omitempty"`
 	Required             bool                  `yaml:"required,omitempty"             json:"-"`
 }
 
