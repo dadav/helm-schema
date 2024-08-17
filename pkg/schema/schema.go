@@ -629,22 +629,28 @@ func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
 		return rawValue
 	}
 
-	// Consider the first type only for now
-	switch fieldType[0] {
-	case "boolean":
-		return rawValue == "true"
-	case "integer":
-		v, err := strconv.Atoi(rawValue)
-		if err != nil {
-			log.Fatalf("Error while converting %s to integer: %v", rawValue, err)
+	// rawValue must be one of fielTypes
+	for _, t := range fieldType {
+		switch t {
+		case "boolean":
+			switch rawValue {
+			case "true":
+				return true
+			case "false":
+				return false
+			}
+		case "integer":
+			v, err := strconv.Atoi(rawValue)
+			if err == nil {
+				return v
+			}
+		case "number":
+			v, err := strconv.ParseFloat(rawValue, 64)
+			if err == nil {
+				return v
+			}
 		}
-		return v
-	case "number":
-		v, err := strconv.ParseFloat(rawValue, 64)
-		if err != nil {
-			log.Fatalf("Error while converting %s to float: %v", rawValue, err)
-		}
-		return v
 	}
+
 	return rawValue
 }
