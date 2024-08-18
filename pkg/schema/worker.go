@@ -117,7 +117,7 @@ func Worker(
 			continue
 		}
 
-		result.Schema = YamlToSchema(&values, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGenerationConfig, nil)
+		result.Schema = *YamlToSchema(&values, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGenerationConfig, nil)
 
 		results <- result
 	}
