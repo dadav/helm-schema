@@ -49,11 +49,12 @@ func InsertLineToFile(line, file string, emptyLine bool) error {
 		eol = "\r\n"
 	}
 
+	separator := eol
 	if emptyLine {
-		eol = eol + eol
+		separator = eol + eol
 	}
 
-	newContent := line + eol + string(content)
+	newContent := line + separator + string(content)
 	return os.WriteFile(file, []byte(newContent), perm)
 }
 
