@@ -32,7 +32,8 @@ func appendAndNLStr(to *[]byte, from string) {
 }
 
 // InsertLinetoFile inserts a line to the beginning of a file
-func InsertLineToFile(line, file string) error {
+// with an optional empty line before other content
+func InsertLineToFile(line, file string, emptyLine bool) error {
 	fileInfo, err := os.Stat(file)
 	if err != nil {
 		return err
@@ -46,6 +47,10 @@ func InsertLineToFile(line, file string) error {
 	eol := "\n"
 	if len(content) >= 2 && content[len(content)-2] == '\r' && content[len(content)-1] == '\n' {
 		eol = "\r\n"
+	}
+
+	if emptyLine {
+		eol = eol + eol
 	}
 
 	newContent := line + eol + string(content)
