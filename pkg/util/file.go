@@ -31,8 +31,8 @@ func appendAndNLStr(to *[]byte, from string) {
 	*to = append(*to, '\n')
 }
 
-// InsertLinetoFile inserts a line to the beginning of a file
-func InsertLineToFile(line, file string) error {
+// PrefixFirstYamlDocument inserts a line to the beginning of the first YAML document in a file having content
+func PrefixFirstYamlDocument(line, file string) error {
 	fileInfo, err := os.Stat(file)
 	if err != nil {
 		return err
@@ -46,6 +46,13 @@ func InsertLineToFile(line, file string) error {
 	eol := "\n"
 	if len(content) >= 2 && content[len(content)-2] == '\r' && content[len(content)-1] == '\n' {
 		eol = "\r\n"
+	}
+
+	// put line directly below YAML document_start if it exists and nothing is preceding it
+	documentStart := "---" + eol
+	if strings.HasPrefix(string(content), documentStart) {
+		content = content[len(documentStart):]
+		line = documentStart + line
 	}
 
 	newContent := line + eol + string(content)
