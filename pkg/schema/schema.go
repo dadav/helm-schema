@@ -490,11 +490,11 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 			continue
 		}
 		if insideSchemaBlock {
-			content := strings.TrimLeft(strings.TrimPrefix(line, CommentPrefix), " ")
-			rawSchema = append(rawSchema, strings.TrimLeft(strings.TrimPrefix(content, CommentPrefix), " "))
+			content := strings.TrimPrefix(line, CommentPrefix)
+			rawSchema = append(rawSchema, strings.TrimPrefix(strings.TrimPrefix(content, CommentPrefix), " "))
 			result.Set()
 		} else {
-			description = append(description, strings.TrimLeft(strings.TrimPrefix(line, CommentPrefix), " "))
+			description = append(description, strings.TrimPrefix(strings.TrimPrefix(line, CommentPrefix), " "))
 		}
 	}
 
