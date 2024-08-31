@@ -89,7 +89,7 @@ func Worker(
 		if addSchemaReference {
 			schemaRef := `# yaml-language-server: $schema=values.schema.json`
 			if !strings.Contains(string(content), schemaRef) {
-				err = util.InsertLineToFile(schemaRef, valuesPath, true)
+				err = util.PrefixFirstYamlDocument(schemaRef, valuesPath)
 				if err != nil {
 					result.Errors = append(result.Errors, err)
 					results <- result
