@@ -112,7 +112,7 @@ foo: bar
 | [`properties`](#properties) | Contains a map with keys as property names and values as schema | Takes an `object` |
 | [`pattern`](#pattern) | Regex pattern to test the value | Takes an `string` |
 | [`format`](#format) | The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values | Takes a [keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) |
-| [`required`](#required) | Adds the key to the required items | `true` or `false` |
+| [`required`](#required) | Adds the key to the required items | `true` or `false` or `array` |
 | [`deprecated`](#deprecated) | Marks the option as deprecated | `true` or `false` |
 | [`items`](#items) | Contains the schema that describes the possible array items | Takes an `object` |
 | [`enum`](#enum) | Multiple allowed values. Accepts an array of `string` | Takes an `array` |
@@ -128,6 +128,7 @@ foo: bar
 | [`anyOf`](#anyof) | Accepts an array of schemas. None or one must apply | Takes an `array` |
 | [`oneOf`](#oneof) | Accepts an array of schemas. One or more must apply | Takes an `array` |
 | [`allOf`](#allof) | Accepts an array of schemas. All must apply| Takes an `array` |
+| [`not`](#not) | A schema that must not be matched. | Takes an `object` |
 | [`if/then/else`](#ifthenelse) | `if` the given schema applies, `then` also apply the given schema or `else` the other schema| Takes an `object` |
 | `$ref` | Accepts a URL to a valid `jsonschema`. Extend the schema for the current key | Takes an URL |
 
@@ -368,6 +369,16 @@ By default every property is a required property, you can disable this with `req
 # required: false
 # @schema
 altName: foo
+```
+
+It's also possible to define an array of required properties on the parent.
+
+```yaml
+# @schema
+# required: [foo]
+# @schema
+altName:
+  foo: bar
 ```
 
 #### `deprecated`
@@ -626,7 +637,7 @@ storage: 30Gib
 
 #### `allOf`
 
-Allows user to define multiple schema fo a single key. Key must match `oneOf` the given schemas.
+Allows user to define multiple schema for a single key. Key must match `oneOf` the given schemas.
 
 ```yaml
 # @schema
@@ -636,6 +647,18 @@ Allows user to define multiple schema fo a single key. Key must match `oneOf` th
 #   - enum: [5Gib,10Gib,15Gib]
 # @schema
 storage: 10Gib
+```
+
+#### `not`
+
+Allows to define a schema that must not be matched.
+
+```yaml
+# @schema
+# not:
+#   type: string
+# @schema
+foo: bar
 ```
 
 #### `if/then/else`

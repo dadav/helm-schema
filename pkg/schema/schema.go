@@ -35,6 +35,50 @@ const (
 
 type SchemaOrBool interface{}
 
+type BoolOrArrayOfString struct {
+	Strings []string
+	Bool    bool
+}
+
+func NewBoolOrArrayOfString(arr []string, b bool) BoolOrArrayOfString {
+	return BoolOrArrayOfString{
+		Strings: arr,
+		Bool:    b,
+	}
+}
+
+func (s *BoolOrArrayOfString) MarshalJSON() ([]byte, error) {
+	if s.Strings == nil {
+		return json.Marshal([]string{})
+	}
+	return json.Marshal(s.Strings)
+}
+
+func (s *BoolOrArrayOfString) UnmarshalYAML(value *yaml.Node) error {
+	var multi []string
+	if value.ShortTag() == arrayTag {
+		for _, v := range value.Content {
+			var typeStr string
+			err := v.Decode(&typeStr)
+			if err != nil {
+				return err
+			}
+			multi = append(multi, typeStr)
+		}
+		s.Strings = multi
+	} else if value.ShortTag() == boolTag {
+		var single bool
+		err := value.Decode(&single)
+		if err != nil {
+			return err
+		}
+		s.Bool = single
+	} else {
+		return fmt.Errorf("could not unmarshal %v to slice of string or bool", value.Content)
+	}
+	return nil
+}
+
 type StringOrArrayOfString []string
 
 func (s *StringOrArrayOfString) UnmarshalYAML(value *yaml.Node) error {
@@ -134,14 +178,20 @@ type Schema struct {
 	AllOf                []*Schema             `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
 	OneOf                []*Schema             `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
 	Not                  *Schema               `yaml:"not,omitempty"                json:"not,omitempty"`
-	RequiredProperties   []string              `yaml:"-"                              json:"required,omitempty"`
 	Examples             []string              `yaml:"examples,omitempty"             json:"examples,omitempty"`
 	Enum                 []string              `yaml:"enum,omitempty"                 json:"enum,omitempty"`
 	HasData              bool                  `yaml:"-"                              json:"-"`
 	Deprecated           bool                  `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
 	ReadOnly             bool                  `yaml:"readOnly,omitempty"           json:"readOnly,omitempty"`
 	WriteOnly            bool                  `yaml:"writeOnly,omitempty"           json:"writeOnly,omitempty"`
-	Required             bool                  `yaml:"required,omitempty"             json:"-"`
+	Required             BoolOrArrayOfString   `yaml:"required,omitempty"             json:"required,omitempty"`
+}
+
+func NewSchema(schemaType string) *Schema {
+	return &Schema{
+		Type:     []string{schemaType},
+		Required: NewBoolOrArrayOfString([]string{}, false),
+	}
 }
 
 // Set sets the HasData field to true
@@ -149,9 +199,9 @@ func (s *Schema) Set() {
 	s.HasData = true
 }
 
-// DisableRequiredProperties sets all RequiredProperties in this schema to an empty slice
+// DisableRequiredProperties sets disables all required fields
 func (s *Schema) DisableRequiredProperties() {
-	s.RequiredProperties = nil
+	s.Required = NewBoolOrArrayOfString([]string{}, false)
 	for _, v := range s.Properties {
 		v.DisableRequiredProperties()
 	}
@@ -182,6 +232,9 @@ func (s *Schema) DisableRequiredProperties() {
 	}
 	if s.Then != nil {
 		s.Then.DisableRequiredProperties()
+	}
+	if s.Not != nil {
+		s.Not.DisableRequiredProperties()
 	}
 }
 
@@ -359,17 +412,15 @@ func typeFromTag(tag string) ([]string, error) {
 	return []string{}, fmt.Errorf("unsupported yaml tag found: %s", tag)
 }
 
+// FixRequiredProperties iterates over the properties and checks if required has a boolean value.
+// Then the property is added to the parents required property list
 func FixRequiredProperties(schema *Schema) error {
 	if schema.Properties != nil {
-		requiredProperties := []string{}
 		for propName, propValue := range schema.Properties {
 			FixRequiredProperties(propValue)
-			if propValue.Required {
-				requiredProperties = append(requiredProperties, propName)
+			if propValue.Required.Bool && !slices.Contains(schema.Required.Strings, propName) {
+				schema.Required.Strings = append(schema.Required.Strings, propName)
 			}
-		}
-		if len(requiredProperties) > 0 {
-			schema.RequiredProperties = requiredProperties
 		}
 		if !slices.Contains(schema.Type, "object") {
 			// If .Properties is set, type must be object
@@ -417,6 +468,10 @@ func FixRequiredProperties(schema *Schema) error {
 		}
 	}
 
+	if schema.Not != nil {
+		FixRequiredProperties(schema.Not)
+	}
+
 	return nil
 }
 
@@ -435,11 +490,11 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 			continue
 		}
 		if insideSchemaBlock {
-			content := strings.TrimLeft(strings.TrimPrefix(line, CommentPrefix), " ")
-			rawSchema = append(rawSchema, strings.TrimLeft(strings.TrimPrefix(content, CommentPrefix), " "))
+			content := strings.TrimPrefix(line, CommentPrefix)
+			rawSchema = append(rawSchema, strings.TrimPrefix(strings.TrimPrefix(content, CommentPrefix), " "))
 			result.Set()
 		} else {
-			description = append(description, strings.TrimLeft(strings.TrimPrefix(line, CommentPrefix), " "))
+			description = append(description, strings.TrimPrefix(strings.TrimPrefix(line, CommentPrefix), " "))
 		}
 	}
 
@@ -463,8 +518,8 @@ func YamlToSchema(
 	dontRemoveHelmDocsPrefix bool,
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
-) Schema {
-	var schema Schema
+) *Schema {
+	schema := NewSchema("object")
 
 	switch node.Kind {
 	case yaml.DocumentNode:
@@ -472,16 +527,13 @@ func YamlToSchema(
 			log.Fatalf("Strange yaml document found:\n%v\n", node.Content[:])
 		}
 
-		requiredProperties := []string{}
-
-		schema.Type = []string{"object"}
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
 		schema.Properties = YamlToSchema(
 			node.Content[0],
 			keepFullComment,
 			dontRemoveHelmDocsPrefix,
 			skipAutoGeneration,
-			&requiredProperties,
+			&schema.Required.Strings,
 		).Properties
 
 		if _, ok := schema.Properties["global"]; !ok {
@@ -489,9 +541,9 @@ func YamlToSchema(
 			if schema.Properties == nil {
 				schema.Properties = make(map[string]*Schema)
 			}
-			schema.Properties["global"] = &Schema{
-				Type: []string{"object"},
-			}
+			schema.Properties["global"] = NewSchema(
+				"object",
+			)
 			if !skipAutoGeneration.Title {
 				schema.Properties["global"].Title = "global"
 			}
@@ -500,9 +552,6 @@ func YamlToSchema(
 			}
 		}
 
-		if len(requiredProperties) > 0 {
-			schema.RequiredProperties = requiredProperties
-		}
 		// always disable on top level
 		if !skipAutoGeneration.AdditionalProperties {
 			schema.AdditionalProperties = new(bool)
@@ -552,8 +601,10 @@ func YamlToSchema(
 			if keyNodeSchema.Ref == "" {
 
 				// Add key to required array of parent
-				if keyNodeSchema.Required || (!skipAutoGeneration.Required && !keyNodeSchema.HasData) {
-					*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
+				if keyNodeSchema.Required.Bool || (len(keyNodeSchema.Required.Strings) == 0 && !skipAutoGeneration.Required && !keyNodeSchema.HasData) {
+					if !slices.Contains(*parentRequiredProperties, keyNode.Value) {
+						*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
+					}
 				}
 
 				if !skipAutoGeneration.AdditionalProperties && valueNode.Kind == yaml.MappingNode &&
@@ -578,20 +629,16 @@ func YamlToSchema(
 
 				// If the value is another map and no properties are set, get them from default values
 				if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
-					requiredProperties := []string{}
 					keyNodeSchema.Properties = YamlToSchema(
 						valueNode,
 						keepFullComment,
 						dontRemoveHelmDocsPrefix,
 						skipAutoGeneration,
-						&requiredProperties,
+						&keyNodeSchema.Required.Strings,
 					).Properties
-					if len(requiredProperties) > 0 {
-						keyNodeSchema.RequiredProperties = requiredProperties
-					}
 				} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
 					// If the value is a sequence, but no items are predefined
-					var seqSchema Schema
+					seqSchema := NewSchema("array")
 
 					for _, itemNode := range valueNode.Content {
 						if itemNode.Kind == yaml.ScalarNode {
@@ -599,23 +646,23 @@ func YamlToSchema(
 							if err != nil {
 								log.Fatal(err)
 							}
-							seqSchema.AnyOf = append(seqSchema.AnyOf, &Schema{Type: itemNodeType})
+							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
 							itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
 
-							if len(itemRequiredProperties) > 0 {
-								itemSchema.RequiredProperties = itemRequiredProperties
+							for _, req := range itemRequiredProperties {
+								itemSchema.Required.Strings = append(itemSchema.Required.Strings, req)
 							}
 
 							if !skipAutoGeneration.AdditionalProperties && itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
 								itemSchema.AdditionalProperties = new(bool)
 							}
 
-							seqSchema.AnyOf = append(seqSchema.AnyOf, &itemSchema)
+							seqSchema.AnyOf = append(seqSchema.AnyOf, itemSchema)
 						}
 					}
-					keyNodeSchema.Items = &seqSchema
+					keyNodeSchema.Items = seqSchema
 
 					// Because the `required` field isn't valid jsonschema (but just a helper boolean)
 					// we must convert them to valid requiredProperties fields
