@@ -1,6 +1,12 @@
 package schema
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+
+	"github.com/magiconair/properties/assert"
+	"gopkg.in/yaml.v3"
+)
 
 func TestValidate(t *testing.T) {
 	tests := []struct {
@@ -10,7 +16,7 @@ func TestValidate(t *testing.T) {
 		{
 			comment: `
 # @schema
-# multipleOf: true
+# multipleOf: 0
 # @schema`,
 			expectedValid: false,
 		},
@@ -148,4 +154,19 @@ func TestValidate(t *testing.T) {
 			)
 		}
 	}
+}
+
+func TestUnmarshalYAML(t *testing.T) {
+	yamlData := `
+type: string
+x-custom-foo: bar
+`
+
+	var schema Schema
+	if err := yaml.Unmarshal([]byte(yamlData), &schema); err != nil {
+		fmt.Println("Error unmarshaling YAML:", err)
+		return
+	}
+	assert.Equal(t, schema.Type, StringOrArrayOfString{"string"})
+	assert.Equal(t, schema.CustomAnnotations["x-custom-foo"], "bar")
 }

@@ -20,6 +20,10 @@ import (
 const (
 	SchemaPrefix  = "# @schema"
 	CommentPrefix = "#"
+
+	// CustomAnnotationPrefix marks custom annotations.
+	// custom annotations is a map of custom annotations. See introduction of custom annotation: https://json-schema.org/blog/posts/custom-annotations-will-continue
+	CustomAnnotationPrefix = "x-"
 )
 
 const (
@@ -150,41 +154,71 @@ func (s *StringOrArrayOfString) Matches(typeString string) bool {
 	return false
 }
 
+// MarshalJSON custom marshal method for Schema. It inlines the CustomAnnotations fields
+func (s *Schema) MarshalJSON() ([]byte, error) {
+	// Create a map to hold all the fields
+	type Alias Schema
+	data := make(map[string]interface{})
+
+	// Marshal the Schema struct (excluding CustomAnnotations)
+	alias := (*Alias)(s)
+	aliasJSON, err := json.Marshal(alias)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal the JSON back into the map
+	if err := json.Unmarshal(aliasJSON, &data); err != nil {
+		return nil, err
+	}
+
+	// inline the CustomAnnotations fields
+	for key, value := range s.CustomAnnotations {
+		data[key] = value
+	}
+
+	delete(data, "CustomAnnotations")
+
+	// Marshal the final map into JSON
+	return json.Marshal(data)
+}
+
 // Schema struct contains yaml tags for reading, json for writing (creating the jsonschema)
 type Schema struct {
-	AdditionalProperties SchemaOrBool          `yaml:"additionalProperties,omitempty" json:"additionalProperties,omitempty"`
-	Default              interface{}           `yaml:"default,omitempty"              json:"default,omitempty"`
-	Then                 *Schema               `yaml:"then,omitempty"                 json:"then,omitempty"`
-	PatternProperties    map[string]*Schema    `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
-	Properties           map[string]*Schema    `yaml:"properties,omitempty"           json:"properties,omitempty"`
-	If                   *Schema               `yaml:"if,omitempty"                   json:"if,omitempty"`
-	Minimum              *int                  `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
-	MultipleOf           *int                  `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
-	ExclusiveMaximum     *int                  `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
-	Items                *Schema               `yaml:"items,omitempty"                json:"items,omitempty"`
-	ExclusiveMinimum     *int                  `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
-	Maximum              *int                  `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
-	Else                 *Schema               `yaml:"else,omitempty"                 json:"else,omitempty"`
-	Pattern              string                `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
-	Const                interface{}           `yaml:"const,omitempty"                json:"const,omitempty"`
-	Ref                  string                `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
-	Schema               string                `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
-	Id                   string                `yaml:"$id,omitempty"                  json:"$id,omitempty"`
-	Format               string                `yaml:"format,omitempty"               json:"format,omitempty"`
-	Description          string                `yaml:"description,omitempty"          json:"description,omitempty"`
-	Title                string                `yaml:"title,omitempty"                json:"title,omitempty"`
-	Type                 StringOrArrayOfString `yaml:"type,omitempty"                 json:"type,omitempty"`
-	AnyOf                []*Schema             `yaml:"anyOf,omitempty"                json:"anyOf,omitempty"`
-	AllOf                []*Schema             `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
-	OneOf                []*Schema             `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
-	Not                  *Schema               `yaml:"not,omitempty"                json:"not,omitempty"`
-	Examples             []string              `yaml:"examples,omitempty"             json:"examples,omitempty"`
-	Enum                 []string              `yaml:"enum,omitempty"                 json:"enum,omitempty"`
-	HasData              bool                  `yaml:"-"                              json:"-"`
-	Deprecated           bool                  `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
-	ReadOnly             bool                  `yaml:"readOnly,omitempty"           json:"readOnly,omitempty"`
-	WriteOnly            bool                  `yaml:"writeOnly,omitempty"           json:"writeOnly,omitempty"`
-	Required             BoolOrArrayOfString   `yaml:"required,omitempty"             json:"required,omitempty"`
+	AdditionalProperties SchemaOrBool           `yaml:"additionalProperties,omitempty" json:"additionalProperties,omitempty"`
+	Default              interface{}            `yaml:"default,omitempty"              json:"default,omitempty"`
+	Then                 *Schema                `yaml:"then,omitempty"                 json:"then,omitempty"`
+	PatternProperties    map[string]*Schema     `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
+	Properties           map[string]*Schema     `yaml:"properties,omitempty"           json:"properties,omitempty"`
+	If                   *Schema                `yaml:"if,omitempty"                   json:"if,omitempty"`
+	Minimum              *int                   `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
+	MultipleOf           *int                   `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
+	ExclusiveMaximum     *int                   `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
+	Items                *Schema                `yaml:"items,omitempty"                json:"items,omitempty"`
+	ExclusiveMinimum     *int                   `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
+	Maximum              *int                   `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
+	Else                 *Schema                `yaml:"else,omitempty"                 json:"else,omitempty"`
+	Pattern              string                 `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
+	Const                interface{}            `yaml:"const,omitempty"                json:"const,omitempty"`
+	Ref                  string                 `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
+	Schema               string                 `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
+	Id                   string                 `yaml:"$id,omitempty"                  json:"$id,omitempty"`
+	Format               string                 `yaml:"format,omitempty"               json:"format,omitempty"`
+	Description          string                 `yaml:"description,omitempty"          json:"description,omitempty"`
+	Title                string                 `yaml:"title,omitempty"                json:"title,omitempty"`
+	Type                 StringOrArrayOfString  `yaml:"type,omitempty"                 json:"type,omitempty"`
+	AnyOf                []*Schema              `yaml:"anyOf,omitempty"                json:"anyOf,omitempty"`
+	AllOf                []*Schema              `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
+	OneOf                []*Schema              `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
+	Not                  *Schema                `yaml:"not,omitempty"                json:"not,omitempty"`
+	Examples             []string               `yaml:"examples,omitempty"             json:"examples,omitempty"`
+	Enum                 []string               `yaml:"enum,omitempty"                 json:"enum,omitempty"`
+	HasData              bool                   `yaml:"-"                              json:"-"`
+	Deprecated           bool                   `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
+	ReadOnly             bool                   `yaml:"readOnly,omitempty"           json:"readOnly,omitempty"`
+	WriteOnly            bool                   `yaml:"writeOnly,omitempty"           json:"writeOnly,omitempty"`
+	Required             BoolOrArrayOfString    `yaml:"required,omitempty"             json:"required,omitempty"`
+	CustomAnnotations    map[string]interface{} `yaml:"-"                              json:",omitempty"`
 }
 
 func NewSchema(schemaType string) *Schema {
@@ -192,6 +226,55 @@ func NewSchema(schemaType string) *Schema {
 		Type:     []string{schemaType},
 		Required: NewBoolOrArrayOfString([]string{}, false),
 	}
+}
+
+// UnmarshalYAML custom unmarshal method
+func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
+	// Create an alias type to avoid recursion
+	type schemaAlias Schema
+	alias := new(schemaAlias)
+	// copy all existing fields
+	*alias = schemaAlias(*s)
+
+	// Unmarshal known fields into alias
+	if err := node.Decode(alias); err != nil {
+		return err
+	}
+
+	// Initialize CustomAnnotations map
+	alias.CustomAnnotations = make(map[string]interface{})
+
+	// Iterate through all node fields
+	for i := 0; i < len(node.Content)-1; i += 2 {
+		keyNode := node.Content[i]
+		valueNode := node.Content[i+1]
+		key := keyNode.Value
+
+		// Check if the key is a known field
+		switch key {
+		case "additionalProperties", "default", "then", "patternProperties", "properties",
+			"if", "minimum", "multipleOf", "exclusiveMaximum", "items", "exclusiveMinimum",
+			"maximum", "else", "pattern", "const", "$ref", "$schema", "$id", "format",
+			"description", "title", "type", "anyOf", "allOf", "oneOf", "requiredProperties",
+			"examples", "enum", "deprecated", "required", "not":
+			// Skip known fields
+			continue
+		default:
+			// Unmarshal unknown fields into the CustomAnnotations map
+			if !strings.HasPrefix(key, CustomAnnotationPrefix) {
+				continue
+			}
+			var value interface{}
+			if err := valueNode.Decode(&value); err != nil {
+				return err
+			}
+			alias.CustomAnnotations[key] = value
+		}
+	}
+
+	// Copy alias to the main struct
+	*s = Schema(*alias)
+	return nil
 }
 
 // Set sets the HasData field to true
