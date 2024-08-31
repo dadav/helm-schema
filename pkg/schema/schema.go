@@ -523,6 +523,11 @@ func YamlToSchema(
 				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
 			}
 			if !dontRemoveHelmDocsPrefix {
+				// remove all lines containing helm-docs @tags, like @ignored, or one of those:
+				// https://github.com/norwoodj/helm-docs/blob/v1.14.2/pkg/helm/chart_info.go#L18-L24
+				helmDocsTagsRemover := regexp.MustCompile(`(?ms)(\r\n|\r|\n)?\s*@\w+(\s+--\s)?[^\n\r]*`)
+				description = helmDocsTagsRemover.ReplaceAllString(description, "")
+
 				prefixRemover := regexp.MustCompile(`(?m)^--\s?`)
 				description = prefixRemover.ReplaceAllString(description, "")
 			}
