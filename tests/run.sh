@@ -2,6 +2,9 @@
 
 rc=0
 
+cp ../examples/values.yaml test_repo_example.yaml
+cp ../examples/values.schema.json test_repo_example_expected.schema.json
+
 for test_file in test_*.yaml; do
   expected_file="${test_file%.yaml}_expected.schema.json"
   generated_file="${test_file%.yaml}_generated.schema.json"
