@@ -43,6 +43,20 @@ checksum:
 snapshot:
   name_template: '{{ .Tag }}-next'
 
+dockers:
+  - goos: linux
+    goarch: amd64
+    image_templates:
+      - ghcr.io/dadav/helm-schema:{{ .Tag }}
+      - ghcr.io/dadav/helm-schema:latest
+    build_flag_templates:
+      - --label=org.opencontainers.image.created={{.Date}}
+      - --label=org.opencontainers.image.authors=dadav
+      - --label=org.opencontainers.image.url=https://github.com/dadav/helm-schema
+      - --label=org.opencontainers.image.title={{.ProjectName}}
+      - --label=org.opencontainers.image.revision={{.FullCommit}}
+      - --label=org.opencontainers.image.version={{.Version}}
+
 changelog:
   sort: asc
   filters:
