@@ -36,6 +36,12 @@ From `aur`:
 paru -S helm-schema
 ```
 
+Via `podman/docker`:
+
+```sh
+podman run --rm -v $PWD:/home/helm-schema ghcr.io/dadav/helm-schema:latest
+```
+
 ## Usage
 
 ### Pre-commit hook
