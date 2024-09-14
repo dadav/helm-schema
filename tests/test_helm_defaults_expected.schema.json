@@ -90,8 +90,7 @@
     },
     "imagePullSecrets": {
       "items": {
-        "required": [],
-        "type": "array"
+        "required": []
       },
       "required": [],
       "title": "imagePullSecrets",
@@ -157,8 +156,7 @@
                           "type": "object"
                         }
                       ],
-                      "required": [],
-                      "type": "array"
+                      "required": []
                     },
                     "required": [],
                     "title": "paths",
@@ -172,8 +170,7 @@
                 "type": "object"
               }
             ],
-            "required": [],
-            "type": "array"
+            "required": []
           },
           "required": [],
           "title": "hosts",
@@ -181,8 +178,7 @@
         },
         "tls": {
           "items": {
-            "required": [],
-            "type": "array"
+            "required": []
           },
           "required": [],
           "title": "tls",
@@ -379,8 +375,7 @@
     },
     "tolerations": {
       "items": {
-        "required": [],
-        "type": "array"
+        "required": []
       },
       "required": [],
       "title": "tolerations",
@@ -389,8 +384,7 @@
     "volumeMounts": {
       "description": "Additional volumeMounts on the output Deployment definition.",
       "items": {
-        "required": [],
-        "type": "array"
+        "required": []
       },
       "required": [],
       "title": "volumeMounts",
@@ -399,8 +393,7 @@
     "volumes": {
       "description": "Additional volumes on the output Deployment definition.",
       "items": {
-        "required": [],
-        "type": "array"
+        "required": []
       },
       "required": [],
       "title": "volumes",

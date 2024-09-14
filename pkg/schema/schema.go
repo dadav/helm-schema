@@ -222,6 +222,10 @@ type Schema struct {
 }
 
 func NewSchema(schemaType string) *Schema {
+	if schemaType == "" {
+		return &Schema{}
+	}
+
 	return &Schema{
 		Type:     []string{schemaType},
 		Required: NewBoolOrArrayOfString([]string{}, false),
@@ -721,7 +725,7 @@ func YamlToSchema(
 					).Properties
 				} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
 					// If the value is a sequence, but no items are predefined
-					seqSchema := NewSchema("array")
+					seqSchema := NewSchema("")
 
 					for _, itemNode := range valueNode.Content {
 						if itemNode.Kind == yaml.ScalarNode {
