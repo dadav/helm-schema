@@ -12,7 +12,7 @@ import (
 // TopoSort uses topological sorting to sort the results
 func TopoSort(results []*Result) ([]*Result, error) {
 	// Map result identifier to result
-	lookup := make(map[string]*Result)
+	lookup := make(map[string][]*Result)
 
 	// Map result identifier to dependencies identifiers
 	todo := make(map[string]mapset.Set[chart.Dependency])
@@ -24,10 +24,7 @@ func TopoSort(results []*Result) ([]*Result, error) {
 			dependencies.Add(*dep)
 		}
 		resultId := fmt.Sprintf("%s|%s", result.Chart.Name, result.Chart.Version)
-		if _, ok := lookup[resultId]; ok {
-			return nil, fmt.Errorf("duplicate chart found: %s - consider changing the name or version, so that helm-schema can distinguish them", result.Chart.Name)
-		}
-		lookup[resultId] = result
+		lookup[resultId] = append(lookup[resultId], result)
 		todo[resultId] = dependencies
 	}
 
@@ -47,7 +44,7 @@ func TopoSort(results []*Result) ([]*Result, error) {
 		if ready.Cardinality() == 0 {
 			// append unsorted to sorted items and return them
 			for name := range todo {
-				sorted = append(sorted, lookup[name])
+				sorted = append(sorted, lookup[name]...)
 			}
 
 			return sorted, &CircularError{fmt.Sprintf("circular or missing dependency found: %v - Please build and untar all your helm dependencies: helm dep build && ls charts/*.tgz |xargs -n1 tar -C charts/ -xzf", todo)}
@@ -56,7 +53,7 @@ func TopoSort(results []*Result) ([]*Result, error) {
 		// remove ready items from todo list and add to sorted list
 		for name := range ready.Iter() {
 			delete(todo, name)
-			sorted = append(sorted, lookup[name])
+			sorted = append(sorted, lookup[name]...)
 
 			// remove ready items from deps list too
 			for todoName, deps := range todo {
