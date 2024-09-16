@@ -2,8 +2,10 @@ package util
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 
@@ -144,4 +146,14 @@ func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 	}
 
 	return result, nil
+}
+
+// IsRelativeFile checks if the given string is a relative path to a file
+func IsRelativeFile(root, relPath string) (string, error) {
+	if !path.IsAbs(relPath) {
+		foo := path.Join(path.Dir(root), relPath)
+		_, err := os.Stat(foo)
+		return foo, err
+	}
+	return "", errors.New("Is absolute file")
 }

@@ -136,7 +136,7 @@ foo: bar
 | [`allOf`](#allof) | Accepts an array of schemas. All must apply| Takes an `array` |
 | [`not`](#not) | A schema that must not be matched. | Takes an `object` |
 | [`if/then/else`](#ifthenelse) | `if` the given schema applies, `then` also apply the given schema or `else` the other schema| Takes an `object` |
-| `$ref` | Accepts a URL to a valid `jsonschema`. Extend the schema for the current key | Takes an URL |
+| [`$ref`](#ref) | Accepts a URI to a valid `jsonschema`. Extend the schema for the current key | Takes an URI (or relative file) |
 | [`minLength`](#minlength) | Minimum string length. | Takes an `integer`. Must be smaller or equal than `maxLength` (if used) |
 | [`maxLength`](#maxlength) | Maximum string length. | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
 
@@ -706,6 +706,41 @@ The value must be an integer greater than zero and defines the maximum length of
 ```yaml
 # @schema
 # maxLength: 3
+# @schema
+namespace: foo
+```
+
+#### `$ref`
+
+The value must be an URI or relative file.
+
+Relative files are imported on creation time. If you update the referenced file, you need
+to run helm-schema again.
+
+**foo.json:**
+
+```json
+{
+  "foo": {
+    "type": "string",
+    "minLength": 10
+  }
+}
+```
+
+```yaml
+# @schema
+# $ref: foo.json#/foo
+# @schema
+namespace: foo
+```
+
+is the same as
+
+```yaml
+# @schema
+# type: string
+# minLength: 10
 # @schema
 namespace: foo
 ```
