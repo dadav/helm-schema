@@ -219,6 +219,8 @@ type Schema struct {
 	WriteOnly            bool                   `yaml:"writeOnly,omitempty"           json:"writeOnly,omitempty"`
 	Required             BoolOrArrayOfString    `yaml:"required,omitempty"             json:"required,omitempty"`
 	CustomAnnotations    map[string]interface{} `yaml:"-"                              json:",omitempty"`
+	MinLength            *int                   `yaml:"minLength,omitempty"              json:"minLength,omitempty"`
+	MaxLength            *int                   `yaml:"maxLength,omitempty"              json:"maxLength,omitempty"`
 }
 
 func NewSchema(schemaType string) *Schema {
@@ -355,9 +357,14 @@ func (s Schema) Validate() error {
 		return fmt.Errorf("cant use pattern if type is %s. Use type=string", s.Type)
 	}
 
-	// // Check if type=string if format!=""
+	// Check if type=string if format!=""
 	if s.Format != "" && !s.Type.IsEmpty() && !s.Type.Matches("string") {
 		return fmt.Errorf("cant use format if type is %s. Use type=string", s.Type)
+	}
+
+	// Check if type=string if maxLength or minLength is used
+	if s.MaxLength != nil && s.MinLength != nil && *s.MinLength > *s.MaxLength {
+		return errors.New("cant use MinLength > MaxLength")
 	}
 
 	// Cant use Format and Pattern together
@@ -372,7 +379,7 @@ func (s Schema) Validate() error {
 		}
 	}
 
-	// // If type and items are used, type must be array
+	// If type and items are used, type must be array
 	if s.Items != nil && !s.Type.IsEmpty() && !s.Type.Matches("array") {
 		return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
 	}

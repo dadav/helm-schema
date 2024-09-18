@@ -137,6 +137,8 @@ foo: bar
 | [`not`](#not) | A schema that must not be matched. | Takes an `object` |
 | [`if/then/else`](#ifthenelse) | `if` the given schema applies, `then` also apply the given schema or `else` the other schema| Takes an `object` |
 | `$ref` | Accepts a URL to a valid `jsonschema`. Extend the schema for the current key | Takes an URL |
+| [`minLength`](#minlength) | Minimum string length. | Takes an `integer`. Must be smaller or equal than `maxLength` (if used) |
+| [`maxLength`](#maxlength) | Maximum string length. | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
 
 ## Validation & completion
 
@@ -684,6 +686,28 @@ Conditional schema settings with `if`/`then`/`else`
 #   description: It's a string
 # @schema
 unknown: foo
+```
+
+#### `minLength`
+
+The value must be an integer greater or equal to zero and defines the minimum length of a string value.
+
+```yaml
+# @schema
+# minLength: 1
+# @schema
+namespace: foo
+```
+
+#### `maxLength`
+
+The value must be an integer greater than zero and defines the maximum length of a string value.
+
+```yaml
+# @schema
+# maxLength: 3
+# @schema
+namespace: foo
 ```
 
 ## License
