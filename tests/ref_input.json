@@ -1,0 +1,6 @@
+{
+  "foo": {
+    "type": "string",
+    "description": "from ref"
+  }
+}

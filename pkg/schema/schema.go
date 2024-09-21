@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/dadav/go-jsonpointer"
+	"github.com/dadav/helm-schema/pkg/util"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -107,6 +111,18 @@ func (s *StringOrArrayOfString) UnmarshalYAML(value *yaml.Node) error {
 		if err != nil {
 			return err
 		}
+		*s = []string{single}
+	}
+	return nil
+}
+
+func (s *StringOrArrayOfString) UnmarshalJSON(value []byte) error {
+	var multi []string
+	var single string
+
+	if err := json.Unmarshal(value, &multi); err == nil {
+		*s = multi
+	} else if err := json.Unmarshal(value, &single); err == nil {
 		*s = []string{single}
 	}
 	return nil
@@ -607,6 +623,7 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 
 // YamlToSchema recursevly parses the given yaml.Node and creates a jsonschema from it
 func YamlToSchema(
+	valuesPath string,
 	node *yaml.Node,
 	keepFullComment bool,
 	dontRemoveHelmDocsPrefix bool,
@@ -623,6 +640,7 @@ func YamlToSchema(
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
 		schema.Properties = YamlToSchema(
+			valuesPath,
 			node.Content[0],
 			keepFullComment,
 			dontRemoveHelmDocsPrefix,
@@ -675,6 +693,48 @@ func YamlToSchema(
 				description = prefixRemover.ReplaceAllString(description, "")
 			}
 
+			if keyNodeSchema.Ref != "" {
+				// Check if Ref is a relative file to the values file
+				refParts := strings.Split(keyNodeSchema.Ref, "#")
+				if relFilePath, err := util.IsRelativeFile(valuesPath, refParts[0]); err == nil {
+					var relSchema Schema
+					file, err := os.Open(relFilePath)
+					if err == nil {
+						byteValue, _ := io.ReadAll(file)
+
+						if len(refParts) > 1 {
+							// Found json-pointer
+							var obj interface{}
+							json.Unmarshal(byteValue, &obj)
+							jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
+							if err != nil {
+								log.Fatal(err)
+							}
+							jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
+							if err != nil {
+								log.Fatal(err)
+							}
+							err = json.Unmarshal(jsonPointerResultMarshaled, &relSchema)
+							if err != nil {
+								log.Fatal(err)
+							}
+						} else {
+							// No json-pointer
+							err = json.Unmarshal(byteValue, &relSchema)
+							if err != nil {
+								log.Fatal(err)
+							}
+						}
+						keyNodeSchema = relSchema
+						keyNodeSchema.HasData = true
+					} else {
+						log.Fatal(err)
+					}
+				} else {
+					log.Debug(err)
+				}
+			}
+
 			if keyNodeSchema.HasData {
 				if err := keyNodeSchema.Validate(); err != nil {
 					log.Fatalf(
@@ -724,6 +784,7 @@ func YamlToSchema(
 				// If the value is another map and no properties are set, get them from default values
 				if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
 					keyNodeSchema.Properties = YamlToSchema(
+						valuesPath,
 						valueNode,
 						keepFullComment,
 						dontRemoveHelmDocsPrefix,
@@ -743,7 +804,7 @@ func YamlToSchema(
 							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
-							itemSchema := YamlToSchema(itemNode, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
+							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
 
 							for _, req := range itemRequiredProperties {
 								itemSchema.Required.Strings = append(itemSchema.Required.Strings, req)
@@ -763,6 +824,7 @@ func YamlToSchema(
 					FixRequiredProperties(&keyNodeSchema)
 				}
 			}
+
 			if schema.Properties == nil {
 				schema.Properties = make(map[string]*Schema)
 			}

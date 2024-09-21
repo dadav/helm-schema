@@ -1,0 +1,6 @@
+---
+# @schema
+# $ref: ref_input.json#/foo
+# @schema
+# Not from ref
+foo: bar
