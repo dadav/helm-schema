@@ -5,4 +5,5 @@ RUN adduser -k /dev/null -u 10001 -D helm-schema \
 COPY helm-schema /
 USER 10001
 VOLUME [ "/home/helm-schema" ]
+WORKDIR /home/helm-schema
 ENTRYPOINT ["/helm-schema"]
