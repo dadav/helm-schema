@@ -136,7 +136,7 @@ foo: bar
 | [`allOf`](#allof) | Accepts an array of schemas. All must apply| Takes an `array` |
 | [`not`](#not) | A schema that must not be matched. | Takes an `object` |
 | [`if/then/else`](#ifthenelse) | `if` the given schema applies, `then` also apply the given schema or `else` the other schema| Takes an `object` |
-| [`$ref`](#ref) | Accepts a URI to a valid `jsonschema`. Extend the schema for the current key | Takes an URI (or relative file) |
+| [`$ref`](#ref) | Accepts an URI to a valid `jsonschema`. Extend the schema for the current key | Takes an URI (or relative file) |
 | [`minLength`](#minlength) | Minimum string length. | Takes an `integer`. Must be smaller or equal than `maxLength` (if used) |
 | [`maxLength`](#maxlength) | Maximum string length. | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
 
