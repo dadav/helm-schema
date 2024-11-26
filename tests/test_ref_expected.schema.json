@@ -2,6 +2,22 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "additionalProperties": false,
   "properties": {
+    "bar": {
+      "additionalProperties": false,
+      "description": "from different ref",
+      "properties": {
+        "baz": {
+          "description": "from ref",
+          "required": [],
+          "type": "string"
+        }
+      },
+      "required": [
+        "baz"
+      ],
+      "title": "bar",
+      "type": "object"
+    },
     "foo": {
       "default": "bar",
       "description": "from ref",
