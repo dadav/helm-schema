@@ -1,8 +1,8 @@
+---
 name: "schema"
 version: "0.14.1"
-usage: "generate JSON schemas for your Helm charts"
-description: |-
-  Generate JSON schemas for your Helm charts
+usage: "generate jsonschemas for your helm charts"
+description: "generate jsonschemas for your helm charts"
 command: "$HELM_PLUGIN_DIR/bin/helm-schema"
 hooks:
   install: "$HELM_PLUGIN_DIR/install-binary.sh"
