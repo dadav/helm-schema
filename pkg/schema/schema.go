@@ -55,6 +55,18 @@ func NewBoolOrArrayOfString(arr []string, b bool) BoolOrArrayOfString {
 	}
 }
 
+func (s *BoolOrArrayOfString) UnmarshalJSON(value []byte) error {
+	var multi []string
+	var single bool
+
+	if err := json.Unmarshal(value, &multi); err == nil {
+		s.Strings = multi
+	} else if err := json.Unmarshal(value, &single); err == nil {
+		s.Bool = single
+	}
+	return nil
+}
+
 func (s *BoolOrArrayOfString) MarshalJSON() ([]byte, error) {
 	if s.Strings == nil {
 		return json.Marshal([]string{})

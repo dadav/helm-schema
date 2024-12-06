@@ -2,5 +2,18 @@
   "foo": {
     "type": "string",
     "description": "from ref"
+  },
+  "bar": {
+    "type": "object",
+    "description": "from different ref",
+    "properties": {
+      "baz": {
+        "type": "string",
+        "description": "from ref"
+      }
+    },
+    "required": [
+      "baz"
+    ]
   }
 }

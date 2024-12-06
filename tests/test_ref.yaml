@@ -4,3 +4,9 @@
 # @schema
 # Not from ref
 foo: bar
+# @schema
+# $ref: ref_input.json#/bar
+# @schema
+# Not from ref
+bar:
+  baz: qux
