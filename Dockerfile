@@ -1,4 +1,4 @@
-FROM alpine:3.20
+FROM alpine:3.21
 RUN adduser -k /dev/null -u 10001 -D helm-schema \
   && chgrp 0 /home/helm-schema \
   && chmod -R g+rwX /home/helm-schema
