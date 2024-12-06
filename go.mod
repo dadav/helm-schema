@@ -5,7 +5,7 @@ go 1.23.1
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/dadav/go-jsonpointer v0.0.0-20240918181927-335cbee8c279
-	github.com/deckarep/golang-set/v2 v2.6.0
+	github.com/deckarep/golang-set/v2 v2.7.0
 	github.com/magiconair/properties v1.8.7
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/sirupsen/logrus v1.9.3
