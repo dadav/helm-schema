@@ -3,7 +3,7 @@ module github.com/dadav/helm-schema
 go 1.23.1
 
 require (
-	github.com/Masterminds/semver/v3 v3.3.0
+	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/dadav/go-jsonpointer v0.0.0-20240918181927-335cbee8c279
 	github.com/deckarep/golang-set/v2 v2.6.0
 	github.com/magiconair/properties v1.8.7
