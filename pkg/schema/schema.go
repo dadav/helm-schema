@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -247,6 +248,8 @@ type Schema struct {
 	CustomAnnotations    map[string]interface{} `yaml:"-"                              json:",omitempty"`
 	MinLength            *int                   `yaml:"minLength,omitempty"              json:"minLength,omitempty"`
 	MaxLength            *int                   `yaml:"maxLength,omitempty"              json:"maxLength,omitempty"`
+	MinItems             *int                   `yaml:"minItems,omitempty"              json:"minItems,omitempty"`
+	MaxItems             *int                   `yaml:"maxItems,omitempty"              json:"maxItems,omitempty"`
 }
 
 func NewSchema(schemaType string) *Schema {
@@ -258,6 +261,17 @@ func NewSchema(schemaType string) *Schema {
 		Type:     []string{schemaType},
 		Required: NewBoolOrArrayOfString([]string{}, false),
 	}
+}
+
+func (s Schema) getJsonKeys() []string {
+	result := []string{}
+	t := reflect.TypeOf(s)
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		result = append(result, field.Tag.Get("json"))
+	}
+	return result
 }
 
 // UnmarshalYAML custom unmarshal method
@@ -276,32 +290,27 @@ func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 	// Initialize CustomAnnotations map
 	alias.CustomAnnotations = make(map[string]interface{})
 
+	knownKeys := s.getJsonKeys()
+
 	// Iterate through all node fields
 	for i := 0; i < len(node.Content)-1; i += 2 {
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 		key := keyNode.Value
 
-		// Check if the key is a known field
-		switch key {
-		case "additionalProperties", "default", "then", "patternProperties", "properties",
-			"if", "minimum", "multipleOf", "exclusiveMaximum", "items", "exclusiveMinimum",
-			"maximum", "else", "pattern", "const", "$ref", "$schema", "$id", "format",
-			"description", "title", "type", "anyOf", "allOf", "oneOf", "requiredProperties",
-			"examples", "enum", "deprecated", "required", "not":
-			// Skip known fields
+		if slices.Contains(knownKeys, key) {
 			continue
-		default:
-			// Unmarshal unknown fields into the CustomAnnotations map
-			if !strings.HasPrefix(key, CustomAnnotationPrefix) {
-				continue
-			}
-			var value interface{}
-			if err := valueNode.Decode(&value); err != nil {
-				return err
-			}
-			alias.CustomAnnotations[key] = value
 		}
+
+		// Unmarshal unknown fields into the CustomAnnotations map
+		if !strings.HasPrefix(key, CustomAnnotationPrefix) {
+			continue
+		}
+		var value interface{}
+		if err := valueNode.Decode(&value); err != nil {
+			return err
+		}
+		alias.CustomAnnotations[key] = value
 	}
 
 	// Copy alias to the main struct
@@ -411,6 +420,14 @@ func (s Schema) Validate() error {
 	// If type and items are used, type must be array
 	if s.Items != nil && !s.Type.IsEmpty() && !s.Type.Matches("array") {
 		return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
+	}
+
+	if (s.MinItems != nil || s.MaxItems != nil) && !s.Type.IsEmpty() && !s.Type.Matches("array") {
+		return fmt.Errorf("cant use minItems or maxItems if type is %s. Use type=array", s.Type)
+	}
+
+	if (s.MinItems != nil && s.MaxItems != nil) && *s.MaxItems < *s.MinItems {
+		return errors.New("minItems cant be greater than maxItems")
 	}
 
 	if s.Const != nil && !s.Type.IsEmpty() {

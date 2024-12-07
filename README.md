@@ -145,6 +145,8 @@ foo: bar
 | [`$ref`](#ref) | Accepts an URI to a valid `jsonschema`. Extend the schema for the current key | Takes an URI (or relative file) |
 | [`minLength`](#minlength) | Minimum string length. | Takes an `integer`. Must be smaller or equal than `maxLength` (if used) |
 | [`maxLength`](#maxlength) | Maximum string length. | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
+| [`minItems`](#minItems) | Minimum length of an array. | Takes an `integer`. Must be smaller or equal than `maxItems` (if used) |
+| [`maxItems`](#maxItems) | Maximum length of an array. | Takes an `integer`. Must be greater or equal than `minItems` (if used) |
 
 ## Validation & completion
 
@@ -714,6 +716,31 @@ The value must be an integer greater than zero and defines the maximum length of
 # maxLength: 3
 # @schema
 namespace: foo
+```
+
+#### `minItems`
+
+The value must be an integer greater than zero and defines the minimum length of an array value.
+
+```yaml
+# @schema
+# minItems: 1
+# @schema
+namespace:
+  - foo
+```
+
+#### `maxItems`
+
+The value must be an integer greater than zero and defines the maximum length of an array value.
+
+```yaml
+# @schema
+# maxItems: 2
+# @schema
+namespace:
+  - foo
+  - bar
 ```
 
 #### `$ref`
