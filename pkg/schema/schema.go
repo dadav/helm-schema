@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -262,6 +263,17 @@ func NewSchema(schemaType string) *Schema {
 	}
 }
 
+func (s Schema) getJsonKeys() []string {
+	result := []string{}
+	t := reflect.TypeOf(s)
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		result = append(result, field.Tag.Get("json"))
+	}
+	return result
+}
+
 // UnmarshalYAML custom unmarshal method
 func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 	// Create an alias type to avoid recursion
@@ -278,32 +290,27 @@ func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 	// Initialize CustomAnnotations map
 	alias.CustomAnnotations = make(map[string]interface{})
 
+	knownKeys := s.getJsonKeys()
+
 	// Iterate through all node fields
 	for i := 0; i < len(node.Content)-1; i += 2 {
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 		key := keyNode.Value
 
-		// Check if the key is a known field
-		switch key {
-		case "additionalProperties", "default", "then", "patternProperties", "properties",
-			"if", "minimum", "multipleOf", "exclusiveMaximum", "items", "exclusiveMinimum",
-			"maximum", "else", "pattern", "const", "$ref", "$schema", "$id", "format",
-			"description", "title", "type", "anyOf", "allOf", "oneOf", "requiredProperties",
-			"examples", "enum", "deprecated", "required", "not":
-			// Skip known fields
+		if slices.Contains(knownKeys, key) {
 			continue
-		default:
-			// Unmarshal unknown fields into the CustomAnnotations map
-			if !strings.HasPrefix(key, CustomAnnotationPrefix) {
-				continue
-			}
-			var value interface{}
-			if err := valueNode.Decode(&value); err != nil {
-				return err
-			}
-			alias.CustomAnnotations[key] = value
 		}
+
+		// Unmarshal unknown fields into the CustomAnnotations map
+		if !strings.HasPrefix(key, CustomAnnotationPrefix) {
+			continue
+		}
+		var value interface{}
+		if err := valueNode.Decode(&value); err != nil {
+			return err
+		}
+		alias.CustomAnnotations[key] = value
 	}
 
 	// Copy alias to the main struct
