@@ -247,6 +247,8 @@ type Schema struct {
 	CustomAnnotations    map[string]interface{} `yaml:"-"                              json:",omitempty"`
 	MinLength            *int                   `yaml:"minLength,omitempty"              json:"minLength,omitempty"`
 	MaxLength            *int                   `yaml:"maxLength,omitempty"              json:"maxLength,omitempty"`
+	MinItems             *int                   `yaml:"minItems,omitempty"              json:"minItems,omitempty"`
+	MaxItems             *int                   `yaml:"maxItems,omitempty"              json:"maxItems,omitempty"`
 }
 
 func NewSchema(schemaType string) *Schema {
@@ -411,6 +413,14 @@ func (s Schema) Validate() error {
 	// If type and items are used, type must be array
 	if s.Items != nil && !s.Type.IsEmpty() && !s.Type.Matches("array") {
 		return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
+	}
+
+	if (s.MinItems != nil || s.MaxItems != nil) && !s.Type.IsEmpty() && !s.Type.Matches("array") {
+		return fmt.Errorf("cant use minItems or maxItems if type is %s. Use type=array", s.Type)
+	}
+
+	if (s.MinItems != nil && s.MaxItems != nil) && *s.MaxItems < *s.MinItems {
+		return errors.New("minItems cant be greater than maxItems")
 	}
 
 	if s.Const != nil && !s.Type.IsEmpty() {
