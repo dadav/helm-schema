@@ -14,11 +14,9 @@ import (
 
 	"github.com/dadav/go-jsonpointer"
 	"github.com/dadav/helm-schema/pkg/util"
-	"github.com/santhosh-tekuri/jsonschema/v5"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
-
-	_ "github.com/santhosh-tekuri/jsonschema/v5/httploader"
 )
 
 const (
@@ -371,7 +369,10 @@ func (s Schema) Validate() error {
 		return err
 	}
 
-	if _, err := jsonschema.CompileString("schema.json", string(jsonStr)); err != nil {
+	c := jsonschema.NewCompiler()
+
+	if err := c.AddResource("schema.json", jsonStr); err != nil {
+		// if _, err := jsonschema.CompileString("schema.json", string(jsonStr)); err != nil {
 		return err
 	}
 
