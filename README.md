@@ -79,10 +79,11 @@ The binary has the following options:
 ```sh
 Flags:
   -r, --add-schema-reference          "add reference to schema in values.yaml if not found"
-  -a, --append-newline                 append newline to generated jsonschema at the end of the file
+  -a, --append-newline                "append newline to generated jsonschema at the end of the file"
   -c, --chart-search-root string      "directory to search recursively within for charts (default ".")"
   -x, --dont-strip-helm-docs-prefix   "disable the removal of the helm-docs prefix (--)"
   -d, --dry-run                       "don't actually create files just print to stdout passed"
+  -p, --helm-docs-compatibility-mode  "parse and use helm-docs comments"
   -h, --help                          "help for helm-schema"
   -s, --keep-full-comment             "keep the whole leading comment (default: cut at empty line)"
   -l, --log-level string              "level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
@@ -187,6 +188,9 @@ If not provided, `title` will be the key and the `description` will be parsed fr
 # -- helm-docs description here
 foo: []
 ```
+
+If you use `-p`/`--helm-docs-compatibility-mode` flags, the `@default`, `(type)` annotations and helm-docs descriptions
+are used if detected.
 
 > [!NOTE]
 > Make sure to place the `@schema` annotations **before** the actual key description to avoid having it in your `helm-docs` generated table

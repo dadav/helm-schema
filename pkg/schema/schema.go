@@ -15,6 +15,7 @@ import (
 
 	"github.com/dadav/go-jsonpointer"
 	"github.com/dadav/helm-schema/pkg/util"
+	"github.com/norwoodj/helm-docs/pkg/helm"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -656,6 +657,7 @@ func YamlToSchema(
 	valuesPath string,
 	node *yaml.Node,
 	keepFullComment bool,
+	helmDocsCompatibilityMode bool,
 	dontRemoveHelmDocsPrefix bool,
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
@@ -673,6 +675,7 @@ func YamlToSchema(
 			valuesPath,
 			node.Content[0],
 			keepFullComment,
+			helmDocsCompatibilityMode,
 			dontRemoveHelmDocsPrefix,
 			skipAutoGeneration,
 			&schema.Required.Strings,
@@ -713,6 +716,28 @@ func YamlToSchema(
 			if err != nil {
 				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
 			}
+
+			if helmDocsCompatibilityMode {
+				_, helmDocsValue := helm.ParseComment(strings.Split(keyNode.HeadComment, "\n"))
+				if helmDocsValue.Default != "" {
+					keyNodeSchema.Set()
+					keyNodeSchema.Default = helmDocsValue.Default
+				}
+				if helmDocsValue.Description != "" {
+					keyNodeSchema.Set()
+					keyNodeSchema.Description = helmDocsValue.Description
+				}
+				if helmDocsValue.ValueType != "" {
+					helmDocsType, err := helmDocsTypeToSchemaType(helmDocsValue.ValueType)
+					if err != nil {
+						log.Warnln(err)
+					} else {
+						keyNodeSchema.Set()
+						keyNodeSchema.Type = StringOrArrayOfString{helmDocsType}
+					}
+				}
+			}
+
 			if !dontRemoveHelmDocsPrefix {
 				// remove all lines containing helm-docs @tags, like @ignored, or one of those:
 				// https://github.com/norwoodj/helm-docs/blob/v1.14.2/pkg/helm/chart_info.go#L18-L24
@@ -817,6 +842,7 @@ func YamlToSchema(
 						valuesPath,
 						valueNode,
 						keepFullComment,
+						helmDocsCompatibilityMode,
 						dontRemoveHelmDocsPrefix,
 						skipAutoGeneration,
 						&keyNodeSchema.Required.Strings,
@@ -834,7 +860,7 @@ func YamlToSchema(
 							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
-							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
+							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
 
 							for _, req := range itemRequiredProperties {
 								itemSchema.Required.Strings = append(itemSchema.Required.Strings, req)
@@ -863,6 +889,25 @@ func YamlToSchema(
 	}
 
 	return schema
+}
+
+func helmDocsTypeToSchemaType(helmDocsType string) (string, error) {
+	switch helmDocsType {
+	case "int":
+		return "integer", nil
+	case "bool":
+		return "boolean", nil
+	case "float":
+		return "number", nil
+	case "list":
+		return "array", nil
+	case "map":
+		return "object", nil
+	case "string", "object":
+		return helmDocsType, nil
+	}
+
+	return "", fmt.Errorf("cant translate helm-docs type (%s) to helm-schema type", helmDocsType)
 }
 
 func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
