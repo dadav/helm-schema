@@ -57,6 +57,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		BoolP("uncomment", "u", false, "consider yaml which is commented out")
 	cmd.PersistentFlags().
+		BoolP("helm-docs-compatibility-mode", "p", false, "parse and use helm-docs comments")
+	cmd.PersistentFlags().
 		BoolP("dont-strip-helm-docs-prefix", "x", false, "disable the removal of the helm-docs prefix (--)")
 	cmd.PersistentFlags().
 		BoolP("no-dependencies", "n", false, "don't analyze dependencies")

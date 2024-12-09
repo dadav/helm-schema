@@ -45,6 +45,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	noDeps := viper.GetBool("no-dependencies")
 	addSchemaReference := viper.GetBool("add-schema-reference")
 	keepFullComment := viper.GetBool("keep-full-comment")
+	helmDocsCompatibilityMode := viper.GetBool("helm-docs-compatibility-mode")
 	uncomment := viper.GetBool("uncomment")
 	outFile := viper.GetString("output-file")
 	dontRemoveHelmDocsPrefix := viper.GetBool("dont-strip-helm-docs-prefix")
@@ -88,6 +89,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 				uncomment,
 				addSchemaReference,
 				keepFullComment,
+				helmDocsCompatibilityMode,
 				dontRemoveHelmDocsPrefix,
 				valueFileNames,
 				skipConfig,
