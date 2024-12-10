@@ -706,6 +706,10 @@ func YamlToSchema(
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
 
+			if valueNode.Kind == yaml.AliasNode {
+				valueNode = valueNode.Alias
+			}
+
 			comment := keyNode.HeadComment
 			if !keepFullComment {
 				leadingCommentsRemover := regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
