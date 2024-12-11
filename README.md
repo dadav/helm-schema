@@ -45,7 +45,7 @@ podman run --rm -v $PWD:/home/helm-schema ghcr.io/dadav/helm-schema:latest
 As `helm plugin`:
 
 ```sh
-helm plugin install https://github.com/dadav/helm-schema/cmd/helm-schema.git
+helm plugin install https://github.com/dadav/helm-schema
 ```
 
 ## Usage
