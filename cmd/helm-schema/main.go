@@ -50,6 +50,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	outFile := viper.GetString("output-file")
 	dontRemoveHelmDocsPrefix := viper.GetBool("dont-strip-helm-docs-prefix")
 	appendNewline := viper.GetBool("append-newline")
+	dependencies := viper.GetString("dependencies")
 	if err := viper.UnmarshalKey("value-files", &valueFileNames); err != nil {
 		return err
 	}
@@ -61,6 +62,15 @@ func exec(cmd *cobra.Command, _ []string) error {
 	skipConfig, err := schema.NewSkipAutoGenerationConfig(skipAutoGeneration)
 	if err != nil {
 		return err
+	}
+
+	// Parse dependencies
+	var selectedDependencies []string
+	if dependencies != "" {
+		selectedDependencies = strings.Split(dependencies, ",")
+		for i := range selectedDependencies {
+			selectedDependencies[i] = strings.TrimSpace(selectedDependencies[i])
+		}
 	}
 
 	// 1. Start a producer that searches Chart.yaml and values.yaml files
@@ -109,7 +119,6 @@ loop:
 			results = append(results, &res)
 		case <-done:
 			break loop
-
 		}
 	}
 
@@ -201,6 +210,9 @@ loop:
 
 			for _, dep := range result.Chart.Dependencies {
 				if dep.Name != "" {
+					if len(selectedDependencies) > 0 && !contains(selectedDependencies, dep.Name) {
+						continue
+					}
 					if dependencyResult, ok := chartNameToResult[dep.Name]; ok {
 						log.Debugf(
 							"Found chart of dependency %s (%s)",
@@ -263,6 +275,16 @@ loop:
 		return errors.New("some errors were found")
 	}
 	return nil
+}
+
+// Helper function to check if a slice contains a string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
 
 func main() {

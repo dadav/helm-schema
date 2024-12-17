@@ -63,6 +63,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		BoolP("no-dependencies", "n", false, "don't analyze dependencies")
 	cmd.PersistentFlags().
+		String("dependencies", "", "Comma-separated list of dependencies to process")
+	cmd.PersistentFlags().
 		BoolP("add-schema-reference", "r", false, "add reference to schema in values.yaml if not found")
 	cmd.PersistentFlags().StringP("log-level", "l", "info", logLevelUsage)
 	cmd.PersistentFlags().
