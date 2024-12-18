@@ -81,6 +81,7 @@ Flags:
   -r, --add-schema-reference          "add reference to schema in values.yaml if not found"
   -a, --append-newline                "append newline to generated jsonschema at the end of the file"
   -c, --chart-search-root string      "directory to search recursively within for charts (default ".")"
+  -i, --dependencies-filter strings   "only generate schema for specified dependencies (comma-separated list of dependency names)"
   -x, --dont-strip-helm-docs-prefix   "disable the removal of the helm-docs prefix (--)"
   -d, --dry-run                       "don't actually create files just print to stdout passed"
   -p, --helm-docs-compatibility-mode  "parse and use helm-docs comments"

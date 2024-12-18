@@ -12,11 +12,13 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 
+	"github.com/dadav/helm-schema/pkg/chart"
 	"github.com/dadav/helm-schema/pkg/schema"
 )
 
-func searchFiles(startPath, fileName string, queue chan<- string, errs chan<- error) {
+func searchFiles(chartSearchRoot, startPath, fileName string, dependenciesFilter map[string]bool, queue chan<- string, errs chan<- error) {
 	defer close(queue)
 	err := filepath.Walk(startPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -25,7 +27,30 @@ func searchFiles(startPath, fileName string, queue chan<- string, errs chan<- er
 		}
 
 		if !info.IsDir() && info.Name() == fileName {
-			queue <- path
+			if filepath.Dir(path) == chartSearchRoot {
+				queue <- path
+				return nil
+			}
+
+			if len(dependenciesFilter) > 0 {
+				chartData, err := os.ReadFile(path)
+				if err != nil {
+					errs <- fmt.Errorf("failed to read Chart.yaml at %s: %w", path, err)
+					return nil
+				}
+
+				var chart chart.ChartFile
+				if err := yaml.Unmarshal(chartData, &chart); err != nil {
+					errs <- fmt.Errorf("failed to parse Chart.yaml at %s: %w", path, err)
+					return nil
+				}
+
+				if dependenciesFilter[chart.Name] {
+					queue <- path
+				}
+			} else {
+				queue <- path
+			}
 		}
 
 		return nil
@@ -50,6 +75,11 @@ func exec(cmd *cobra.Command, _ []string) error {
 	outFile := viper.GetString("output-file")
 	dontRemoveHelmDocsPrefix := viper.GetBool("dont-strip-helm-docs-prefix")
 	appendNewline := viper.GetBool("append-newline")
+	dependenciesFilter := viper.GetStringSlice("dependencies-filter")
+	dependenciesFilterMap := make(map[string]bool)
+	for _, dep := range dependenciesFilter {
+		dependenciesFilterMap[dep] = true
+	}
 	if err := viper.UnmarshalKey("value-files", &valueFileNames); err != nil {
 		return err
 	}
@@ -63,16 +93,14 @@ func exec(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// 1. Start a producer that searches Chart.yaml and values.yaml files
 	queue := make(chan string)
 	resultsChan := make(chan schema.Result)
 	results := []*schema.Result{}
 	errs := make(chan error)
 	done := make(chan struct{})
 
-	go searchFiles(chartSearchRoot, "Chart.yaml", queue, errs)
+	go searchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
 
-	// 2. Start workers and every worker does:
 	wg := sync.WaitGroup{}
 	go func() {
 		wg.Wait()
@@ -113,10 +141,8 @@ loop:
 		}
 	}
 
-	// sort results with topology sort (only if we're checking the dependencies)
 	if !noDeps {
-		// sort results with topology sort
-		results, err = schema.TopoSort(results)
+		results, err = schema.TopoSort(results, dependenciesFilterMap)
 		if err != nil {
 			if _, ok := err.(*schema.CircularError); !ok {
 				log.Errorf("Error while sorting results: %s", err)
@@ -128,16 +154,16 @@ loop:
 	}
 
 	conditionsToPatch := make(map[string][]string)
-	// Sort results if dependencies should be processed
-	// Need to resolve the dependencies from deepest level to highest
-
 	if !noDeps {
-		// Iterate over deps to find conditions we need to patch (dependencies that have a condition)
 		for _, result := range results {
 			if len(result.Errors) > 0 {
 				continue
 			}
 			for _, dep := range result.Chart.Dependencies {
+				if len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name] {
+					continue
+				}
+
 				if dep.Condition != "" {
 					conditionKeys := strings.Split(dep.Condition, ".")
 					conditionsToPatch[conditionKeys[0]] = conditionKeys[1:]
@@ -149,9 +175,7 @@ loop:
 	chartNameToResult := make(map[string]*schema.Result)
 	foundErrors := false
 
-	// process results
 	for _, result := range results {
-		// Error handling
 		if len(result.Errors) > 0 {
 			foundErrors = true
 			if result.Chart != nil {
@@ -172,7 +196,9 @@ loop:
 
 		log.Debugf("Processing result for chart: %s (%s)", result.Chart.Name, result.ChartPath)
 		if !noDeps {
-			// Patch condition into schema if needed
+			chartNameToResult[result.Chart.Name] = result
+			log.Debugf("Stored chart %s in chartNameToResult", result.Chart.Name)
+
 			if patch, ok := conditionsToPatch[result.Chart.Name]; ok {
 				schemaToPatch := &result.Schema
 				lastIndex := len(patch) - 1
@@ -200,6 +226,10 @@ loop:
 			}
 
 			for _, dep := range result.Chart.Dependencies {
+				if len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name] {
+					continue
+				}
+
 				if dep.Name != "" {
 					if dependencyResult, ok := chartNameToResult[dep.Name]; ok {
 						log.Debugf(
@@ -213,8 +243,6 @@ loop:
 							Description: dependencyResult.Chart.Description,
 							Properties:  dependencyResult.Schema.Properties,
 						}
-						// you don't NEED to overwrite the values
-						// so every required check will be disabled
 						depSchema.DisableRequiredProperties()
 
 						if dep.Alias != "" {
@@ -230,10 +258,8 @@ loop:
 					log.Warnf("Dependency without name found (checkout %s).", result.ChartPath)
 				}
 			}
-			chartNameToResult[result.Chart.Name] = result
 		}
 
-		// Print to stdout or write to file
 		jsonStr, err := result.Schema.ToJson()
 		if err != nil {
 			log.Error(err)
