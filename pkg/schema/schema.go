@@ -866,9 +866,7 @@ func YamlToSchema(
 							itemRequiredProperties := []string{}
 							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
 
-							for _, req := range itemRequiredProperties {
-								itemSchema.Required.Strings = append(itemSchema.Required.Strings, req)
-							}
+							itemSchema.Required.Strings = append(itemSchema.Required.Strings, itemRequiredProperties...)
 
 							if !skipAutoGeneration.AdditionalProperties && itemNode.Kind == yaml.MappingNode && (!itemSchema.HasData || itemSchema.AdditionalProperties == nil) {
 								itemSchema.AdditionalProperties = new(bool)
