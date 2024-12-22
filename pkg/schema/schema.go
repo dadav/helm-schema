@@ -21,15 +21,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// SchemaPrefix and CommentPrefix define the markers used for schema annotations in comments
 const (
 	SchemaPrefix  = "# @schema"
 	CommentPrefix = "#"
 
 	// CustomAnnotationPrefix marks custom annotations.
-	// custom annotations is a map of custom annotations. See introduction of custom annotation: https://json-schema.org/blog/posts/custom-annotations-will-continue
+	// Custom annotations are extensions to the JSON Schema specification
+	// See: https://json-schema.org/blog/posts/custom-annotations-will-continue
 	CustomAnnotationPrefix = "x-"
 )
 
+// YAML tag constants used for type inference
 const (
 	nullTag      = "!!null"
 	boolTag      = "!!bool"
@@ -41,8 +44,11 @@ const (
 	mapTag       = "!!map"
 )
 
+// SchemaOrBool represents a JSON Schema field that can be either a boolean or a Schema object
 type SchemaOrBool interface{}
 
+// BoolOrArrayOfString represents a JSON Schema field that can be either a boolean or an array of strings
+// Used primarily for the "required" field which can be either true/false or an array of required property names
 type BoolOrArrayOfString struct {
 	Strings []string
 	Bool    bool
@@ -264,6 +270,9 @@ func NewSchema(schemaType string) *Schema {
 	}
 }
 
+// getJsonKeys returns a slice of all JSON tag values from the Schema struct fields.
+// This is used to identify known fields during YAML unmarshaling to separate them
+// from custom annotations.
 func (s Schema) getJsonKeys() []string {
 	result := []string{}
 	t := reflect.TypeOf(s)
@@ -275,7 +284,10 @@ func (s Schema) getJsonKeys() []string {
 	return result
 }
 
-// UnmarshalYAML custom unmarshal method
+// UnmarshalYAML implements custom YAML unmarshaling for Schema objects.
+// It handles both standard schema fields and custom annotations (prefixed with "x-").
+// Custom annotations are stored in the CustomAnnotations map while standard fields
+// are unmarshaled directly into the Schema struct.
 func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 	// Create an alias type to avoid recursion
 	type schemaAlias Schema
@@ -324,7 +336,12 @@ func (s *Schema) Set() {
 	s.HasData = true
 }
 
-// DisableRequiredProperties sets disables all required fields
+// DisableRequiredProperties recursively disables all required property validations throughout the schema.
+// This includes:
+// - Setting the root schema's required field to an empty array
+// - Recursively disabling required properties in all nested schemas (properties, items, etc.)
+// - Handling all conditional schemas (if/then/else)
+// - Processing all composition schemas (anyOf/oneOf/allOf)
 func (s *Schema) DisableRequiredProperties() {
 	s.Required = NewBoolOrArrayOfString([]string{}, false)
 	for _, v := range s.Properties {
@@ -660,7 +677,15 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 	return result, strings.Join(description, "\n"), nil
 }
 
-// YamlToSchema recursevly parses the given yaml.Node and creates a jsonschema from it
+// YamlToSchema recursively parses a YAML node and creates a JSON Schema from it
+// Parameters:
+//   - valuesPath: path to the values file being processed
+//   - node: current YAML node being processed
+//   - keepFullComment: whether to preserve all comment text
+//   - helmDocsCompatibilityMode: whether to parse helm-docs annotations
+//   - dontRemoveHelmDocsPrefix: whether to keep helm-docs prefixes in comments
+//   - skipAutoGeneration: configuration for which fields should not be auto-generated
+//   - parentRequiredProperties: list of required properties to populate in parent
 func YamlToSchema(
 	valuesPath string,
 	node *yaml.Node,
@@ -920,6 +945,16 @@ func helmDocsTypeToSchemaType(helmDocsType string) (string, error) {
 	return "", fmt.Errorf("cant translate helm-docs type (%s) to helm-schema type", helmDocsType)
 }
 
+// castNodeValueByType attempts to convert a raw string value into the appropriate type based on
+// the provided fieldType. It handles boolean, integer, and number conversions. If the conversion
+// fails or the type is not supported (e.g., string), it returns the original raw value.
+//
+// Parameters:
+//   - rawValue: The string value to be converted
+//   - fieldType: Array of allowed JSON Schema types for this field
+//
+// Returns:
+//   - The converted value as interface{}, or the original string if conversion fails/isn't needed
 func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
 	if len(fieldType) == 0 {
 		return rawValue
