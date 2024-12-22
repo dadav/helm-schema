@@ -361,6 +361,14 @@ func (s *Schema) DisableRequiredProperties() {
 	if s.Not != nil {
 		s.Not.DisableRequiredProperties()
 	}
+
+	// Add handling for AdditionalProperties when it's a Schema
+	if s.AdditionalProperties != nil {
+		if subSchema, ok := s.AdditionalProperties.(Schema); ok {
+			subSchema.DisableRequiredProperties()
+			s.AdditionalProperties = subSchema
+		}
+	}
 }
 
 // ToJson converts the data to raw json

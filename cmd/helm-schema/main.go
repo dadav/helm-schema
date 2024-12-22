@@ -142,7 +142,7 @@ loop:
 	}
 
 	if !noDeps {
-		results, err = schema.TopoSort(results, dependenciesFilterMap)
+		results, err = schema.TopoSort(results)
 		if err != nil {
 			if _, ok := err.(*schema.CircularError); !ok {
 				log.Errorf("Error while sorting results: %s", err)

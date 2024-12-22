@@ -5,7 +5,7 @@ import (
 )
 
 // TopoSort uses topological sorting to sort the results
-func TopoSort(results []*Result, dependenciesFilter map[string]bool) ([]*Result, error) {
+func TopoSort(results []*Result) ([]*Result, error) {
 	// Map chart names to their Result objects for easy lookup
 	chartMap := make(map[string]*Result)
 	for _, r := range results {
@@ -15,19 +15,19 @@ func TopoSort(results []*Result, dependenciesFilter map[string]bool) ([]*Result,
 	}
 
 	// Build dependency graph as adjacency list
-	// Key is chart name, value is slice of dependency names
 	deps := make(map[string][]string)
+
+	// Build dependency graph
 	for _, r := range results {
 		if r.Chart == nil {
 			continue
 		}
 
-		// Add each dependency as an edge in the graph
+		// Initialize empty dependency list
+		deps[r.Chart.Name] = []string{}
+
+		// Add all dependencies
 		for _, dep := range r.Chart.Dependencies {
-			// Skip if dependency filtering is enabled and this dep isn't included
-			if len(dependenciesFilter) > 0 && !dependenciesFilter[dep.Name] {
-				continue
-			}
 			deps[r.Chart.Name] = append(deps[r.Chart.Name], dep.Name)
 		}
 	}
@@ -42,14 +42,14 @@ func TopoSort(results []*Result, dependenciesFilter map[string]bool) ([]*Result,
 	// Recursive DFS helper function
 	var visit func(string) error
 	visit = func(chart string) error {
+		// Check for cycle first, before the visited check
+		if inStack[chart] {
+			return &CircularError{fmt.Sprintf("circular dependency detected: %s", chart)}
+		}
+
 		// Return if already visited
 		if visited[chart] {
 			return nil
-		}
-
-		// Check for cycle
-		if inStack[chart] {
-			return &CircularError{fmt.Sprintf("circular dependency detected: %s", chart)}
 		}
 
 		// Mark as being visited
@@ -77,7 +77,7 @@ func TopoSort(results []*Result, dependenciesFilter map[string]bool) ([]*Result,
 	for _, r := range results {
 		if r.Chart != nil {
 			if err := visit(r.Chart.Name); err != nil {
-				return results, err
+				return nil, err
 			}
 		}
 	}
