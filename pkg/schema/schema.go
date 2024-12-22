@@ -397,124 +397,202 @@ func (s Schema) ToJson() ([]byte, error) {
 	return res, nil
 }
 
-// Validate the schema
+// Supported format values according to JSON Schema specification
+const (
+	FormatDateTime       = "date-time"
+	FormatTime           = "time"
+	FormatDate           = "date"
+	FormatDuration       = "duration"
+	FormatEmail          = "email"
+	FormatIDNEmail       = "idn-email"
+	FormatHostname       = "hostname"
+	FormatIDNHostname    = "idn-hostname"
+	FormatIPv4           = "ipv4"
+	FormatIPv6           = "ipv6"
+	FormatUUID           = "uuid"
+	FormatURI            = "uri"
+	FormatURIReference   = "uri-reference"
+	FormatIRI            = "iri"
+	FormatIRIReference   = "iri-reference"
+	FormatURITemplate    = "uri-template"
+	FormatJSONPointer    = "json-pointer"
+	FormatRelJSONPointer = "relative-json-pointer"
+	FormatRegex          = "regex"
+)
+
+var supportedFormats = map[string]bool{
+	FormatDateTime: true, FormatTime: true, FormatDate: true,
+	FormatDuration: true, FormatEmail: true, FormatIDNEmail: true,
+	FormatHostname: true, FormatIDNHostname: true, FormatIPv4: true,
+	FormatIPv6: true, FormatUUID: true, FormatURI: true,
+	FormatURIReference: true, FormatIRI: true, FormatIRIReference: true,
+	FormatURITemplate: true, FormatJSONPointer: true,
+	FormatRelJSONPointer: true, FormatRegex: true,
+}
+
+// Validate performs comprehensive validation of the schema
 func (s Schema) Validate() error {
+	// Validate schema syntax
+	if err := s.validateSchemaSyntax(); err != nil {
+		return err
+	}
+
+	// Validate type constraints
+	if err := s.validateTypeConstraints(); err != nil {
+		return err
+	}
+
+	// Validate numeric constraints
+	if err := s.validateNumericConstraints(); err != nil {
+		return err
+	}
+
+	// Validate string constraints
+	if err := s.validateStringConstraints(); err != nil {
+		return err
+	}
+
+	// Validate array constraints
+	if err := s.validateArrayConstraints(); err != nil {
+		return err
+	}
+
+	// Validate nested schemas
+	if err := s.validateNestedSchemas(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s Schema) validateSchemaSyntax() error {
 	jsonStr, err := s.ToJson()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to convert schema to JSON: %w", err)
 	}
 
 	c := jsonschema.NewCompiler()
-
 	if err := c.AddResource("schema.json", jsonStr); err != nil {
-		// if _, err := jsonschema.CompileString("schema.json", string(jsonStr)); err != nil {
-		return err
+		return fmt.Errorf("invalid schema syntax: %w", err)
 	}
 
-	// Check if type is valid
-	if err := s.Type.Validate(); err != nil {
-		return err
-	}
+	return s.Type.Validate()
+}
 
-	// Check if type=string if pattern!=""
-	if s.Pattern != "" && !s.Type.IsEmpty() && !s.Type.Matches("string") {
-		return fmt.Errorf("cant use pattern if type is %s. Use type=string", s.Type)
-	}
-
-	// Check if type=string if format!=""
-	if s.Format != "" && !s.Type.IsEmpty() && !s.Type.Matches("string") {
-		return fmt.Errorf("cant use format if type is %s. Use type=string", s.Type)
-	}
-
-	// Check if type=string if maxLength or minLength is used
-	if s.MaxLength != nil && s.MinLength != nil && *s.MinLength > *s.MaxLength {
-		return errors.New("cant use MinLength > MaxLength")
-	}
-
-	// Cant use Format and Pattern together
-	if s.Format != "" && s.Pattern != "" {
-		return errors.New("cant use format and pattern option at the same time")
-	}
-
-	// Validate nested Items schema
-	if s.Items != nil {
-		if err := s.Items.Validate(); err != nil {
-			return err
-		}
-	}
-
-	// If type and items are used, type must be array
-	if s.Items != nil && !s.Type.IsEmpty() && !s.Type.Matches("array") {
-		return fmt.Errorf("cant use items if type is %s. Use type=array", s.Type)
-	}
-
-	if (s.MinItems != nil || s.MaxItems != nil) && !s.Type.IsEmpty() && !s.Type.Matches("array") {
-		return fmt.Errorf("cant use minItems or maxItems if type is %s. Use type=array", s.Type)
-	}
-
-	if (s.MinItems != nil && s.MaxItems != nil) && *s.MaxItems < *s.MinItems {
-		return errors.New("minItems cant be greater than maxItems")
-	}
-
+func (s Schema) validateTypeConstraints() error {
 	if s.Const != nil && !s.Type.IsEmpty() {
-		return errors.New("if your are using const, you can't use type")
+		return errors.New("cannot use both 'const' and 'type' in the same schema")
 	}
 
 	if s.Enum != nil && !s.Type.IsEmpty() {
-		return errors.New("if your are using enum, you can't use type")
+		return errors.New("cannot use both 'enum' and 'type' in the same schema")
 	}
 
-	// Check if format is valid
-	// https://json-schema.org/understanding-json-schema/reference/string.html#built-in-formats
-	// We currently dont support https://datatracker.ietf.org/doc/html/rfc3339#appendix-A
-	if s.Format != "" &&
-		s.Format != "date-time" &&
-		s.Format != "time" &&
-		s.Format != "date" &&
-		s.Format != "duration" &&
-		s.Format != "email" &&
-		s.Format != "idn-email" &&
-		s.Format != "hostname" &&
-		s.Format != "idn-hostname" &&
-		s.Format != "ipv4" &&
-		s.Format != "ipv6" &&
-		s.Format != "uuid" &&
-		s.Format != "uri" &&
-		s.Format != "uri-reference" &&
-		s.Format != "iri" &&
-		s.Format != "iri-reference" &&
-		s.Format != "uri-template" &&
-		s.Format != "json-pointer" &&
-		s.Format != "relative-json-pointer" &&
-		s.Format != "regex" {
-		return fmt.Errorf("the format %s is not supported", s.Format)
-	}
-
-	if s.Minimum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
-		return fmt.Errorf("if you use minimum, you cant use type=%s", s.Type)
-	}
-	if s.Maximum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
-		return fmt.Errorf("if you use maximum, you cant use type=%s", s.Type)
-	}
-	if s.ExclusiveMinimum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
-		return fmt.Errorf("if you use exclusiveMinimum, you cant use type=%s", s.Type)
-	}
-	if s.ExclusiveMaximum != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
-		return fmt.Errorf("if you use exclusiveMaximum, you cant use type=%s", s.Type)
-	}
-	if s.MultipleOf != nil && !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
-		return fmt.Errorf("if you use multiple, you cant use type=%s", s.Type)
-	}
-	if s.MultipleOf != nil && *s.MultipleOf <= 0 {
-		return errors.New("multiple option must be greater than 0")
-	}
-	if s.Minimum != nil && s.ExclusiveMinimum != nil {
-		return errors.New("you cant set minimum and exclusiveMinimum")
-	}
-	if s.Maximum != nil && s.ExclusiveMaximum != nil {
-		return errors.New("you cant set minimum and exclusiveMaximum")
-	}
 	return nil
+}
+
+func (s Schema) validateNumericConstraints() error {
+	if !s.hasNumericConstraints() {
+		return nil
+	}
+
+	if !s.Type.IsEmpty() && !s.Type.Matches("number") && !s.Type.Matches("integer") {
+		return fmt.Errorf("numeric constraints can only be used with number or integer types, got %v", s.Type)
+	}
+
+	if s.MultipleOf != nil && *s.MultipleOf <= 0 {
+		return errors.New("multipleOf must be greater than 0")
+	}
+
+	if s.Minimum != nil && s.ExclusiveMinimum != nil {
+		return errors.New("cannot use both minimum and exclusiveMinimum")
+	}
+
+	if s.Maximum != nil && s.ExclusiveMaximum != nil {
+		return errors.New("cannot use both maximum and exclusiveMaximum")
+	}
+
+	return nil
+}
+
+func (s Schema) validateStringConstraints() error {
+	if s.Format != "" {
+		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
+			return fmt.Errorf("format can only be used with string type, got %v", s.Type)
+		}
+
+		if !supportedFormats[s.Format] {
+			return fmt.Errorf("unsupported format: %s", s.Format)
+		}
+	}
+
+	if s.Pattern != "" {
+		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
+			return fmt.Errorf("pattern can only be used with string type, got %v", s.Type)
+		}
+	}
+
+	if s.Format != "" && s.Pattern != "" {
+		return errors.New("cannot use both format and pattern in the same schema")
+	}
+
+	if s.MaxLength != nil && s.MinLength != nil && *s.MinLength > *s.MaxLength {
+		return fmt.Errorf("minLength (%d) cannot be greater than maxLength (%d)", *s.MinLength, *s.MaxLength)
+	}
+
+	return nil
+}
+
+func (s Schema) validateArrayConstraints() error {
+	if s.Items != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("array") {
+			return fmt.Errorf("items can only be used with array type, got %v", s.Type)
+		}
+
+		if err := s.Items.Validate(); err != nil {
+			return fmt.Errorf("invalid items schema: %w", err)
+		}
+	}
+
+	if s.MinItems != nil || s.MaxItems != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("array") {
+			return fmt.Errorf("minItems/maxItems can only be used with array type, got %v", s.Type)
+		}
+
+		if s.MinItems != nil && s.MaxItems != nil && *s.MaxItems < *s.MinItems {
+			return fmt.Errorf("maxItems (%d) cannot be less than minItems (%d)", *s.MaxItems, *s.MinItems)
+		}
+	}
+
+	return nil
+}
+
+func (s Schema) validateNestedSchemas() error {
+	// Validate combinatorial schemas
+	for _, schemas := range [][]*Schema{s.AllOf, s.AnyOf, s.OneOf} {
+		for _, schema := range schemas {
+			if err := schema.Validate(); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Validate conditional schemas
+	for _, schema := range []*Schema{s.If, s.Then, s.Else, s.Not} {
+		if schema != nil {
+			if err := schema.Validate(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s Schema) hasNumericConstraints() bool {
+	return s.Minimum != nil || s.Maximum != nil ||
+		s.ExclusiveMinimum != nil || s.ExclusiveMaximum != nil ||
+		s.MultipleOf != nil
 }
 
 var possibleSkipFields = []string{"title", "description", "required", "default", "additionalProperties"}
