@@ -865,46 +865,9 @@ func YamlToSchema(
 				description = prefixRemover.ReplaceAllString(description, "")
 			}
 
-			if keyNodeSchema.Ref != "" {
-				// Check if Ref is a relative file to the values file
-				refParts := strings.Split(keyNodeSchema.Ref, "#")
-				if relFilePath, err := util.IsRelativeFile(valuesPath, refParts[0]); err == nil {
-					var relSchema Schema
-					file, err := os.Open(relFilePath)
-					if err == nil {
-						byteValue, _ := io.ReadAll(file)
-
-						if len(refParts) > 1 {
-							// Found json-pointer
-							var obj interface{}
-							json.Unmarshal(byteValue, &obj)
-							jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
-							if err != nil {
-								log.Fatal(err)
-							}
-							jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
-							if err != nil {
-								log.Fatal(err)
-							}
-							err = json.Unmarshal(jsonPointerResultMarshaled, &relSchema)
-							if err != nil {
-								log.Fatal(err)
-							}
-						} else {
-							// No json-pointer
-							err = json.Unmarshal(byteValue, &relSchema)
-							if err != nil {
-								log.Fatal(err)
-							}
-						}
-						keyNodeSchema = relSchema
-						keyNodeSchema.HasData = true
-					} else {
-						log.Fatal(err)
-					}
-				} else {
-					log.Debug(err)
-				}
+			if keyNodeSchema.Ref != "" || len(keyNodeSchema.PatternProperties) > 0 {
+				// Handle $ref in main schema and pattern properties
+				handleSchemaRefs(&keyNodeSchema, valuesPath)
 			}
 
 			if keyNodeSchema.HasData {
@@ -955,15 +918,44 @@ func YamlToSchema(
 
 				// If the value is another map and no properties are set, get them from default values
 				if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
-					keyNodeSchema.Properties = YamlToSchema(
-						valuesPath,
-						valueNode,
-						keepFullComment,
-						helmDocsCompatibilityMode,
-						dontRemoveHelmDocsPrefix,
-						skipAutoGeneration,
-						&keyNodeSchema.Required.Strings,
-					).Properties
+					// Initialize properties map if needed
+					if keyNodeSchema.Properties == nil {
+						keyNodeSchema.Properties = make(map[string]*Schema)
+					}
+
+					// Process each property
+					for i := 0; i < len(valueNode.Content); i += 2 {
+						propKeyNode := valueNode.Content[i]
+						propValueNode := valueNode.Content[i+1]
+
+						// Check if this specific property matches any pattern
+						skipProperty := false
+						for pattern := range keyNodeSchema.PatternProperties {
+							matched, err := regexp.MatchString(pattern, propKeyNode.Value)
+							if err != nil {
+								log.Fatalf("Invalid pattern '%s' in patternProperties: %v", pattern, err)
+							}
+							if matched {
+								skipProperty = true
+								break
+							}
+						}
+
+						// Only generate schema for non-matching properties
+						if !skipProperty {
+							propSchema := YamlToSchema(
+								valuesPath,
+								propValueNode,
+								keepFullComment,
+								helmDocsCompatibilityMode,
+								dontRemoveHelmDocsPrefix,
+								dontAddGlobal,
+								skipAutoGeneration,
+								&keyNodeSchema.Required.Strings,
+							)
+							keyNodeSchema.Properties[propKeyNode.Value] = propSchema
+						}
+					}
 				} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
 					// If the value is a sequence, but no items are predefined
 					seqSchema := NewSchema("")
@@ -977,7 +969,7 @@ func YamlToSchema(
 							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
-							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, skipAutoGeneration, &itemRequiredProperties)
+							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties)
 
 							itemSchema.Required.Strings = append(itemSchema.Required.Strings, itemRequiredProperties...)
 
@@ -1064,4 +1056,72 @@ func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
 	}
 
 	return rawValue
+}
+
+// handleSchemaRefs processes and resolves JSON Schema references ($ref) within a schema.
+// It handles both direct schema references and references within patternProperties.
+// For each reference:
+// - If it's a relative file path, it attempts to load and parse the referenced schema
+// - If it includes a JSON pointer (#/path/to/schema), it extracts the specific schema section
+// - The resolved schema replaces the original reference
+//
+// Parameters:
+//   - schema: Pointer to the Schema object containing the references to resolve
+//   - valuesPath: Path to the current values file, used for resolving relative paths
+//
+// The function will log.Fatal on any critical errors (file not found, invalid JSON, etc.)
+// and log.Debug for non-critical issues (e.g., non-relative paths that may be handled elsewhere)
+func handleSchemaRefs(schema *Schema, valuesPath string) {
+	// Handle main schema $ref
+	if schema.Ref != "" {
+		refParts := strings.Split(schema.Ref, "#")
+		if relFilePath, err := util.IsRelativeFile(valuesPath, refParts[0]); err == nil {
+			var relSchema Schema
+			file, err := os.Open(relFilePath)
+			if err == nil {
+				defer file.Close()
+				byteValue, _ := io.ReadAll(file)
+
+				if len(refParts) > 1 {
+					// Found json-pointer
+					var obj interface{}
+					json.Unmarshal(byteValue, &obj)
+					jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
+					if err != nil {
+						log.Fatal(err)
+					}
+					jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
+					if err != nil {
+						log.Fatal(err)
+					}
+					err = json.Unmarshal(jsonPointerResultMarshaled, &relSchema)
+					if err != nil {
+						log.Fatal(err)
+					}
+				} else {
+					// No json-pointer
+					err = json.Unmarshal(byteValue, &relSchema)
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+				*schema = relSchema
+				schema.HasData = true
+			} else {
+				log.Fatal(err)
+			}
+		} else {
+			log.Debug(err)
+		}
+	}
+
+	// Handle $ref in pattern properties
+	if schema.PatternProperties != nil {
+		for pattern, subSchema := range schema.PatternProperties {
+			if subSchema.Ref != "" {
+				handleSchemaRefs(subSchema, valuesPath)
+				schema.PatternProperties[pattern] = subSchema // Update the original schema in the map
+			}
+		}
+	}
 }
