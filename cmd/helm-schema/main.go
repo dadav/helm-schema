@@ -77,6 +77,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	appendNewline := viper.GetBool("append-newline")
 	dependenciesFilter := viper.GetStringSlice("dependencies-filter")
 	dependenciesFilterMap := make(map[string]bool)
+	dontAddGlobal := viper.GetBool("dont-add-global")
 	for _, dep := range dependenciesFilter {
 		dependenciesFilterMap[dep] = true
 	}
@@ -119,6 +120,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 				keepFullComment,
 				helmDocsCompatibilityMode,
 				dontRemoveHelmDocsPrefix,
+				dontAddGlobal,
 				valueFileNames,
 				skipConfig,
 				outFile,

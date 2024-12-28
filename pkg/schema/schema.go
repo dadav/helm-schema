@@ -770,6 +770,7 @@ func YamlToSchema(
 	keepFullComment bool,
 	helmDocsCompatibilityMode bool,
 	dontRemoveHelmDocsPrefix bool,
+	dontAddGlobal bool,
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
 ) *Schema {
@@ -788,11 +789,12 @@ func YamlToSchema(
 			keepFullComment,
 			helmDocsCompatibilityMode,
 			dontRemoveHelmDocsPrefix,
+			dontAddGlobal,
 			skipAutoGeneration,
 			&schema.Required.Strings,
 		).Properties
 
-		if _, ok := schema.Properties["global"]; !ok {
+		if _, ok := schema.Properties["global"]; !ok && !dontAddGlobal {
 			// global key must be present, otherwise helm lint will fail
 			if schema.Properties == nil {
 				schema.Properties = make(map[string]*Schema)

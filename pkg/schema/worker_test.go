@@ -20,6 +20,7 @@ func TestWorker(t *testing.T) {
 		keepFullComment           bool
 		helmDocsCompatibilityMode bool
 		dontRemoveHelmDocsPrefix  bool
+		dontAddGlobal             bool
 		skipAutoGenerationConfig  *SkipAutoGenerationConfig
 		outFile                   string
 		expectedErrors            bool
@@ -128,6 +129,7 @@ key1: value1
 				tt.keepFullComment,
 				tt.helmDocsCompatibilityMode,
 				tt.dontRemoveHelmDocsPrefix,
+				tt.dontAddGlobal,
 				tt.valueFileNames,
 				tt.skipAutoGenerationConfig,
 				tt.outFile,

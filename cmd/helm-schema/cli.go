@@ -73,6 +73,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 		StringSliceP("skip-auto-generation", "k", []string{}, "comma separated list of fields to skip from being created by default (possible: title, description, required, default, additionalProperties)")
 	cmd.PersistentFlags().
 		StringSliceP("dependencies-filter", "i", []string{}, "only generate schema for specified dependencies (comma-separated list of dependency names)")
+	cmd.PersistentFlags().
+		BoolP("dont-add-global", "g", false, "dont auto add global property")
 
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("HELM_SCHEMA")
