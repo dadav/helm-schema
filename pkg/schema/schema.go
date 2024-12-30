@@ -923,10 +923,21 @@ func YamlToSchema(
 						keyNodeSchema.Properties = make(map[string]*Schema)
 					}
 
+					generatedProperties := YamlToSchema(
+						valuesPath,
+						valueNode,
+						keepFullComment,
+						helmDocsCompatibilityMode,
+						dontRemoveHelmDocsPrefix,
+						dontAddGlobal,
+						skipAutoGeneration,
+						&keyNodeSchema.Required.Strings,
+					).Properties
+
 					// Process each property
 					for i := 0; i < len(valueNode.Content); i += 2 {
 						propKeyNode := valueNode.Content[i]
-						propValueNode := valueNode.Content[i+1]
+						// propValueNode := valueNode.Content[i+1]
 
 						// Check if this specific property matches any pattern
 						skipProperty := false
@@ -941,19 +952,9 @@ func YamlToSchema(
 							}
 						}
 
-						// Only generate schema for non-matching properties
+						// Only add schema for non-skipped properties
 						if !skipProperty {
-							propSchema := YamlToSchema(
-								valuesPath,
-								propValueNode,
-								keepFullComment,
-								helmDocsCompatibilityMode,
-								dontRemoveHelmDocsPrefix,
-								dontAddGlobal,
-								skipAutoGeneration,
-								&keyNodeSchema.Required.Strings,
-							)
-							keyNodeSchema.Properties[propKeyNode.Value] = propSchema
+							keyNodeSchema.Properties[propKeyNode.Value] = generatedProperties[propKeyNode.Value]
 						}
 					}
 				} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
