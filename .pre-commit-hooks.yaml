@@ -6,3 +6,11 @@
   language: golang
   name: Generate jsonschema
   require_serial: true
+- id: helm-schema-container
+  args: []
+  description: Uses the container image of 'helm-schema' to create schema from the Helm chart's 'values.yaml' file, and inserts the result into a corresponding 'values.schema.json' file.
+  entry: ghcr.io/dadav/helm-schema:latest
+  files: values.yaml
+  language: docker_image
+  name: Helm Schema Container
+  require_serial: true
