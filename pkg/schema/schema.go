@@ -878,7 +878,9 @@ func YamlToSchema(
 						err,
 					)
 				}
-			} else {
+			}
+
+			if keyNodeSchema.Type.IsEmpty() {
 				nodeType, err := typeFromTag(valueNode.Tag)
 				if err != nil {
 					log.Fatal(err)
