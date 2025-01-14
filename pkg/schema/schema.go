@@ -595,10 +595,10 @@ func (s Schema) hasNumericConstraints() bool {
 		s.MultipleOf != nil
 }
 
-var possibleSkipFields = []string{"title", "description", "required", "default", "additionalProperties"}
+var possibleSkipFields = []string{"type", "title", "description", "required", "default", "additionalProperties"}
 
 type SkipAutoGenerationConfig struct {
-	Title, Description, Required, Default, AdditionalProperties bool
+	Type, Title, Description, Required, Default, AdditionalProperties bool
 }
 
 func NewSkipAutoGenerationConfig(flag []string) (*SkipAutoGenerationConfig, error) {
@@ -609,6 +609,9 @@ func NewSkipAutoGenerationConfig(flag []string) (*SkipAutoGenerationConfig, erro
 	for _, fieldName := range flag {
 		if !slices.Contains(possibleSkipFields, fieldName) {
 			invalidFlags = append(invalidFlags, fieldName)
+		}
+		if fieldName == "type" {
+			config.Type = true
 		}
 		if fieldName == "title" {
 			config.Title = true
@@ -880,7 +883,7 @@ func YamlToSchema(
 				}
 			}
 
-			if keyNodeSchema.Type.IsEmpty() {
+			if keyNodeSchema.Type.IsEmpty() && !skipAutoGeneration.Type {
 				nodeType, err := typeFromTag(valueNode.Tag)
 				if err != nil {
 					log.Fatal(err)
