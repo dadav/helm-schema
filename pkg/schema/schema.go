@@ -223,6 +223,7 @@ type Schema struct {
 	Default              interface{}            `yaml:"default,omitempty"              json:"default,omitempty"`
 	Then                 *Schema                `yaml:"then,omitempty"                 json:"then,omitempty"`
 	PatternProperties    map[string]*Schema     `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
+	KeyAsPatternProperty bool                   `yaml:"keyAsPatternProperty,omitempty" json:"-"`
 	Properties           map[string]*Schema     `yaml:"properties,omitempty"           json:"properties,omitempty"`
 	If                   *Schema                `yaml:"if,omitempty"                   json:"if,omitempty"`
 	Minimum              *int                   `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
@@ -778,6 +779,7 @@ func YamlToSchema(
 	parentRequiredProperties *[]string,
 ) *Schema {
 	schema := NewSchema("object")
+	returnedSchema := NewSchema("object")
 
 	switch node.Kind {
 	case yaml.DocumentNode:
@@ -786,7 +788,7 @@ func YamlToSchema(
 		}
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
-		schema.Properties = YamlToSchema(
+		returnedSchema = YamlToSchema(
 			valuesPath,
 			node.Content[0],
 			keepFullComment,
@@ -795,7 +797,9 @@ func YamlToSchema(
 			dontAddGlobal,
 			skipAutoGeneration,
 			&schema.Required.Strings,
-		).Properties
+		)
+
+		schema.Properties, schema.PatternProperties = returnedSchema.Properties, returnedSchema.PatternProperties
 
 		if _, ok := schema.Properties["global"]; !ok && !dontAddGlobal {
 			// global key must be present, otherwise helm lint will fail
@@ -995,7 +999,15 @@ func YamlToSchema(
 			if schema.Properties == nil {
 				schema.Properties = make(map[string]*Schema)
 			}
-			schema.Properties[keyNode.Value] = &keyNodeSchema
+
+			if keyNodeSchema.KeyAsPatternProperty {
+				if schema.PatternProperties == nil {
+					schema.PatternProperties = make(map[string]*Schema)
+				}
+				schema.PatternProperties[keyNode.Value] = &keyNodeSchema
+			} else {
+				schema.Properties[keyNode.Value] = &keyNodeSchema
+			}
 		}
 	}
 
