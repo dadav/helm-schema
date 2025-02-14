@@ -1,4 +1,4 @@
-package subCharts
+package searching
 
 import (
 	"archive/tar"

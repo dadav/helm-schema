@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	subCharts "github.com/dadav/helm-schema/pkg/chart/subCharts"
+	"github.com/dadav/helm-schema/pkg/chart/searching"
 	"github.com/dadav/helm-schema/pkg/schema"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -56,10 +56,10 @@ func exec(cmd *cobra.Command, _ []string) error {
 	errs := make(chan error)
 	done := make(chan struct{})
 
-	tempDir := subCharts.SearchArchivesOpenTemp(chartSearchRoot, errs)
+	tempDir := searching.SearchArchivesOpenTemp(chartSearchRoot, errs)
 	defer os.RemoveAll(tempDir)
 
-	go subCharts.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
+	go searching.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
 
 	wg := sync.WaitGroup{}
 	go func() {
