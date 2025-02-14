@@ -223,7 +223,7 @@ type Schema struct {
 	Default              interface{}            `yaml:"default,omitempty"              json:"default,omitempty"`
 	Then                 *Schema                `yaml:"then,omitempty"                 json:"then,omitempty"`
 	PatternProperties    map[string]*Schema     `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
-	KeyAsPatternProperty bool                   `yaml:"keyAsPatternProperty,omitempty" json:"-"`
+	KeyAsPatternProperty string                 `yaml:"keyAsPatternProperty,omitempty" json:"-"`
 	Properties           map[string]*Schema     `yaml:"properties,omitempty"           json:"properties,omitempty"`
 	If                   *Schema                `yaml:"if,omitempty"                   json:"if,omitempty"`
 	Minimum              *int                   `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
@@ -1000,11 +1000,11 @@ func YamlToSchema(
 				schema.Properties = make(map[string]*Schema)
 			}
 
-			if keyNodeSchema.KeyAsPatternProperty {
+			if keyNodeSchema.KeyAsPatternProperty != "" {
 				if schema.PatternProperties == nil {
 					schema.PatternProperties = make(map[string]*Schema)
 				}
-				schema.PatternProperties[keyNode.Value] = &keyNodeSchema
+				schema.PatternProperties[keyNodeSchema.KeyAsPatternProperty] = &keyNodeSchema
 			} else {
 				schema.Properties[keyNode.Value] = &keyNodeSchema
 			}
