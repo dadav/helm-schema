@@ -58,6 +58,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 	tempDir := subCharts.SearchArchivesOpenTemp(chartSearchRoot, errs)
 	defer os.RemoveAll(tempDir)
+
 	go subCharts.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
 
 	wg := sync.WaitGroup{}
