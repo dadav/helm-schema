@@ -123,7 +123,7 @@ func SearchArchivesOpenTemp(startPath string, errs chan<- error) string {
 			//unzip archived charts from deps
 			if tempDir == "" {
 				relativeDir := filepath.Dir(path)
-				tempDir, err = os.MkdirTemp(filepath.Join(".", relativeDir), "tmp")
+				tempDir, err = os.MkdirTemp(filepath.Join(relativeDir), "tmp")
 				if err != nil {
 					errs <- err
 					return nil
