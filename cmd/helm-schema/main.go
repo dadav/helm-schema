@@ -213,7 +213,7 @@ loop:
 						}
 
 					} else {
-						log.Warnf("Dependency (%s->%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dependency build & untar the charts.", result.Chart.Name, dep.Name)
+						log.Warnf("Dependency (%s->%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dep up", result.Chart.Name, dep.Name)
 					}
 				} else {
 					log.Warnf("Dependency without name found (checkout %s).", result.ChartPath)
