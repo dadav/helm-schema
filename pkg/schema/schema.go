@@ -245,8 +245,8 @@ type Schema struct {
 	AllOf                []*Schema              `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
 	OneOf                []*Schema              `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
 	Not                  *Schema                `yaml:"not,omitempty"                json:"not,omitempty"`
-	Examples             []string               `yaml:"examples,omitempty"             json:"examples,omitempty"`
-	Enum                 []string               `yaml:"enum,omitempty"                 json:"enum,omitempty"`
+	Examples             []interface{}          `yaml:"examples,omitempty"             json:"examples,omitempty"`
+	Enum                 []interface{}          `yaml:"enum,omitempty"                 json:"enum,omitempty"`
 	HasData              bool                   `yaml:"-"                              json:"-"`
 	Deprecated           bool                   `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
 	ReadOnly             bool                   `yaml:"readOnly,omitempty"           json:"readOnly,omitempty"`
