@@ -84,6 +84,15 @@
           "required": [],
           "title": "env"
         },
+        "externalIP": {
+          "default": "443",
+          "enum": [
+            443,
+            80
+          ],
+          "required": [],
+          "title": "externalIP"
+        },
         "hosts": {
           "description": "Will give auto-completion for the below structure \nhosts: \n - name:\n     url: my.example.org",
           "items": {
@@ -127,6 +136,16 @@
           "description": "Name of the deployed service. Defined in the schema annotation",
           "required": [],
           "title": "name"
+        },
+        "otherExternalIP": {
+          "default": 443,
+          "examples": [
+            443,
+            80
+          ],
+          "required": [],
+          "title": "otherExternalIP",
+          "type": "integer"
         },
         "port": {
           "default": 80,

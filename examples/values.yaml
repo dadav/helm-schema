@@ -21,6 +21,17 @@ service:
   port: 80
 
   # @schema
+  # enum: [443, 80]
+  # @schema
+  externalIP: 443
+  
+  # @schema
+  # type: integer
+  # examples: [443, 80]
+  # @schema
+  otherExternalIP: 443
+
+  # @schema
   # description: Name of the deployed service. Defined in the schema annotation
   # anyOf:
   #   - type: null
