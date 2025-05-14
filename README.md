@@ -749,6 +749,19 @@ namespace:
   - bar
 ```
 
+#### `uniqueItems`
+
+A schema can ensure that each of the items in an array is unique. Simply set the uniqueItems keyword to true.
+
+```yaml
+# @schema
+# uniqueItems: true
+# @schema
+namespace:
+  - foo
+  - bar
+```
+
 #### `$ref`
 
 The value must be an URI or relative file.

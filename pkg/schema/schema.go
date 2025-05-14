@@ -257,7 +257,7 @@ type Schema struct {
 	MaxLength            *int                   `yaml:"maxLength,omitempty"              json:"maxLength,omitempty"`
 	MinItems             *int                   `yaml:"minItems,omitempty"              json:"minItems,omitempty"`
 	MaxItems             *int                   `yaml:"maxItems,omitempty"              json:"maxItems,omitempty"`
-	UniqueItems          *bool                  `yaml:"uniqueItems,omitempty"          json:"uniqueItems,omitempty"`
+	UniqueItems          bool                   `yaml:"uniqueItems,omitempty"          json:"uniqueItems,omitempty"`
 }
 
 func NewSchema(schemaType string) *Schema {
