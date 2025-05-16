@@ -9,56 +9,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dadav/helm-schema/pkg/chart/searching"
+	"github.com/dadav/helm-schema/pkg/schema"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
-
-	"github.com/dadav/helm-schema/pkg/chart"
-	"github.com/dadav/helm-schema/pkg/schema"
 )
-
-func searchFiles(chartSearchRoot, startPath, fileName string, dependenciesFilter map[string]bool, queue chan<- string, errs chan<- error) {
-	defer close(queue)
-	err := filepath.Walk(startPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			errs <- err
-			return nil
-		}
-
-		if !info.IsDir() && info.Name() == fileName {
-			if filepath.Dir(path) == chartSearchRoot {
-				queue <- path
-				return nil
-			}
-
-			if len(dependenciesFilter) > 0 {
-				chartData, err := os.ReadFile(path)
-				if err != nil {
-					errs <- fmt.Errorf("failed to read Chart.yaml at %s: %w", path, err)
-					return nil
-				}
-
-				var chart chart.ChartFile
-				if err := yaml.Unmarshal(chartData, &chart); err != nil {
-					errs <- fmt.Errorf("failed to parse Chart.yaml at %s: %w", path, err)
-					return nil
-				}
-
-				if dependenciesFilter[chart.Name] {
-					queue <- path
-				}
-			} else {
-				queue <- path
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		errs <- err
-	}
-}
 
 func exec(cmd *cobra.Command, _ []string) error {
 	configureLogging()
@@ -100,7 +56,10 @@ func exec(cmd *cobra.Command, _ []string) error {
 	errs := make(chan error)
 	done := make(chan struct{})
 
-	go searchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
+	tempDir := searching.SearchArchivesOpenTemp(chartSearchRoot, errs)
+	defer os.RemoveAll(tempDir)
+
+	go searching.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
 
 	wg := sync.WaitGroup{}
 	go func() {
@@ -254,7 +213,7 @@ loop:
 						}
 
 					} else {
-						log.Warnf("Dependency (%s->%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dependency build & untar the charts.", result.Chart.Name, dep.Name)
+						log.Warnf("Dependency (%s->%s) specified but no schema found. If you want to create jsonschemas for external dependencies, you need to run helm dep up", result.Chart.Name, dep.Name)
 					}
 				} else {
 					log.Warnf("Dependency without name found (checkout %s).", result.ChartPath)
