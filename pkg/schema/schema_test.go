@@ -171,6 +171,22 @@ func TestValidate(t *testing.T) {
 # @schema`,
 			expectedValid: false,
 		},
+		{
+			comment: `
+# @schema
+# type: string
+# uniqueItems: true
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
+# type: string
+# uniqueItems: false
+# @schema`,
+			expectedValid: false,
+		},
 	}
 
 	for _, test := range tests {
