@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "RestConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "default": "http://localhost:8000/",
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "title": "RestConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "worker": {
+      "additionalProperties": false,
+      "description": "Config for the worker application as a whole. Root of\nconfig tree.",
+      "properties": {
+        "api": {
+          "$ref": "#/$defs/RestConfig",
+          "required": []
+        }
+      },
+      "required": [],
+      "title": "ApplicationConfig",
+      "type": "object"
+    }
+  },
+  "required": [],
+  "type": "object"
+}
