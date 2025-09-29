@@ -22,7 +22,7 @@ jobs:
         uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5
         with:
           go-version: ^1.21
-      - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
+      - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
