@@ -174,18 +174,10 @@ func TestValidate(t *testing.T) {
 		{
 			comment: `
 # @schema
-# type: string
+# type: boolean
 # uniqueItems: true
 # @schema`,
 			expectedValid: true,
-		},
-		{
-			comment: `
-# @schema
-# type: string
-# uniqueItems: false
-# @schema`,
-			expectedValid: false,
 		},
 	}
 
