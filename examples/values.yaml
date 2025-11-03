@@ -1,7 +1,7 @@
 # vim: set ft=yaml:
 # yaml-language-server: $schema=values.schema.json
 
-# This is an example values.yaml file, it aims to show how to annotate the keys, and it's its only purpose. 
+# This is an example values.yaml file, it aims to show how to annotate the keys, and it's its only purpose.
 # The corresponding values.schema.json has been generated with the below command.
 # helm-schema -n -k additionalProperties
 
@@ -9,7 +9,6 @@
 # additionalProperties: true
 # @schema
 service:
-  
   # Type will be parsed as boolean
   enabled: true
 
@@ -24,7 +23,7 @@ service:
   # enum: [443, 80]
   # @schema
   externalIP: 443
-  
+
   # @schema
   # type: integer
   # examples: [443, 80]
@@ -38,8 +37,8 @@ service:
   #   - pattern: ^foo-
   # @schema
   # This comment will not be parsed as 'description', the 'description' field take precedence over comments
-  name: 
-    
+  name:
+
   # @schema
   # properties:
   #   CONFIG_PATH:
@@ -58,7 +57,7 @@ service:
   #     format: idn-hostname
   #     examples: [https://api.example.org]
   # @schema
-  # -- Environment variables. If you want to provide auto-completion to the user 
+  # -- Environment variables. If you want to provide auto-completion to the user
   env: {}
 
   # @schema
@@ -98,8 +97,8 @@ service:
   #           type: string
   #           format: idn-hostname
   # @schema
-  # Will give auto-completion for the below structure 
-  # hosts: 
+  # Will give auto-completion for the below structure
+  # hosts:
   #  - name:
   #      url: my.example.org
   hosts: []

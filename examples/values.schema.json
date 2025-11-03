@@ -51,7 +51,7 @@
         },
         "env": {
           "additionalProperties": false,
-          "description": "Environment variables. If you want to provide auto-completion to the user ",
+          "description": "Environment variables. If you want to provide auto-completion to the user",
           "properties": {
             "ADMIN_EMAIL": {
               "examples": [
@@ -94,7 +94,7 @@
           "title": "externalIP"
         },
         "hosts": {
-          "description": "Will give auto-completion for the below structure \nhosts: \n - name:\n     url: my.example.org",
+          "description": "Will give auto-completion for the below structure\nhosts:\n - name:\n     url: my.example.org",
           "items": {
             "properties": {
               "host": {
