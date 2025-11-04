@@ -24,15 +24,12 @@
       "description": "Config for the worker application as a whole. Root of\nconfig tree.",
       "properties": {
         "api": {
-          "$ref": "#/$defs/RestConfig",
-          "required": []
+          "$ref": "#/$defs/RestConfig"
         }
       },
-      "required": [],
       "title": "ApplicationConfig",
       "type": "object"
     }
   },
-  "required": [],
   "type": "object"
 }
