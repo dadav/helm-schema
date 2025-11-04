@@ -258,6 +258,7 @@ type Schema struct {
 	MinItems             *int                   `yaml:"minItems,omitempty"              json:"minItems,omitempty"`
 	MaxItems             *int                   `yaml:"maxItems,omitempty"              json:"maxItems,omitempty"`
 	UniqueItems          bool                   `yaml:"uniqueItems,omitempty"          json:"uniqueItems,omitempty"`
+	Defs                 map[string]*Schema     `yaml:"$defs,omitempty"                json:"$defs,omitempty"`
 }
 
 func NewSchema(schemaType string) *Schema {
