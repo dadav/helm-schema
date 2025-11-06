@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/magiconair/properties/assert"
@@ -278,16 +279,7 @@ func TestConstNullMarshaling(t *testing.T) {
 			}
 
 			jsonStr := string(jsonData)
-			contains := len(jsonStr) > 0 && (jsonStr[0] == '{' || jsonStr[0] == '[')
-			if contains {
-				contains = false
-				for i := 0; i < len(jsonStr)-len(tt.expectedJSON)+1; i++ {
-					if jsonStr[i:i+len(tt.expectedJSON)] == tt.expectedJSON {
-						contains = true
-						break
-					}
-				}
-			}
+			contains := strings.Contains(jsonStr, tt.expectedJSON)
 
 			if tt.shouldContain && !contains {
 				t.Errorf("Expected JSON to contain %q, but got:\n%s", tt.expectedJSON, jsonStr)
