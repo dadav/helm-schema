@@ -226,6 +226,12 @@ func (s *Schema) MarshalJSON() ([]byte, error) {
 		delete(data, "required")
 	}
 
+	// Explicitly include const field when it was set to null
+	// This handles the case where const: null in YAML should appear as "const": null in JSON
+	if s.constWasSet && s.Const == nil {
+		data["const"] = nil
+	}
+
 	// Marshal the final map into JSON
 	return json.Marshal(data)
 }
@@ -271,6 +277,7 @@ type Schema struct {
 	MinItems             *int                   `yaml:"minItems,omitempty"              json:"minItems,omitempty"`
 	MaxItems             *int                   `yaml:"maxItems,omitempty"              json:"maxItems,omitempty"`
 	UniqueItems          bool                   `yaml:"uniqueItems,omitempty"          json:"uniqueItems,omitempty"`
+	constWasSet          bool                   `yaml:"-"                              json:"-"`
 }
 
 func NewSchema(schemaType string) *Schema {
@@ -324,6 +331,11 @@ func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 		key := keyNode.Value
+
+		// Track if const field was explicitly set (even to null)
+		if key == "const" {
+			alias.constWasSet = true
+		}
 
 		if slices.Contains(knownKeys, key) {
 			continue
