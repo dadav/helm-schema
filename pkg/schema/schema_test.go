@@ -65,6 +65,13 @@ func TestValidate(t *testing.T) {
 		{
 			comment: `
 # @schema
+# const: null
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			comment: `
+# @schema
 # format: ipv4
 # @schema`,
 			expectedValid: true,
@@ -221,10 +228,10 @@ x-custom-foo: bar
 
 func TestConstNullMarshaling(t *testing.T) {
 	tests := []struct {
-		name           string
-		yamlData       string
-		expectedJSON   string
-		shouldContain  bool
+		name          string
+		yamlData      string
+		expectedJSON  string
+		shouldContain bool
 	}{
 		{
 			name:          "const with null value should be preserved",
@@ -291,4 +298,3 @@ func TestConstNullMarshaling(t *testing.T) {
 		})
 	}
 }
-
