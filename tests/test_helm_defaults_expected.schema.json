@@ -81,7 +81,9 @@
       "type": "object"
     },
     "imagePullSecrets": {
-      "items": {},
+      "items": {
+        "required": []
+      },
       "title": "imagePullSecrets",
       "type": "array"
     },
@@ -139,7 +141,8 @@
                           ],
                           "type": "object"
                         }
-                      ]
+                      ],
+                      "required": []
                     },
                     "title": "paths",
                     "type": "array"
@@ -151,13 +154,16 @@
                 ],
                 "type": "object"
               }
-            ]
+            ],
+            "required": []
           },
           "title": "hosts",
           "type": "array"
         },
         "tls": {
-          "items": {},
+          "items": {
+            "required": []
+          },
           "title": "tls",
           "type": "array"
         }
@@ -340,19 +346,25 @@
       "type": "object"
     },
     "tolerations": {
-      "items": {},
+      "items": {
+        "required": []
+      },
       "title": "tolerations",
       "type": "array"
     },
     "volumeMounts": {
       "description": "Additional volumeMounts on the output Deployment definition.",
-      "items": {},
+      "items": {
+        "required": []
+      },
       "title": "volumeMounts",
       "type": "array"
     },
     "volumes": {
       "description": "Additional volumes on the output Deployment definition.",
-      "items": {},
+      "items": {
+        "required": []
+      },
       "title": "volumes",
       "type": "array"
     }

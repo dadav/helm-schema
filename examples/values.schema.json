@@ -37,6 +37,7 @@
             "name@domain.tld"
           ],
           "format": "idn-email",
+          "required": [],
           "title": "contact"
         },
         "enabled": {
@@ -74,6 +75,7 @@
               "type": "string"
             }
           },
+          "required": [],
           "title": "env"
         },
         "externalIP": {
@@ -82,6 +84,7 @@
             443,
             80
           ],
+          "required": [],
           "title": "externalIP"
         },
         "hosts": {
@@ -108,17 +111,22 @@
         "maintainer": {
           "const": "maintainer@example.org",
           "default": "maintainer@example.org",
+          "required": [],
           "title": "maintainer"
         },
         "name": {
           "anyOf": [
-            {},
             {
-              "pattern": "^foo-"
+              "required": []
+            },
+            {
+              "pattern": "^foo-",
+              "required": []
             }
           ],
           "default": "",
           "description": "Name of the deployed service. Defined in the schema annotation",
+          "required": [],
           "title": "name"
         },
         "otherExternalIP": {
@@ -160,9 +168,13 @@
             "controller",
             "api"
           ],
+          "required": [],
           "title": "type"
         }
       },
+      "required": [
+        "enabled"
+      ],
       "title": "service"
     }
   },

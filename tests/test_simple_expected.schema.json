@@ -5,6 +5,7 @@
     "foo": {
       "default": "bar",
       "description": "foo",
+      "required": [],
       "title": "foo"
     },
     "global": {
