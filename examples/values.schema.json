@@ -20,12 +20,10 @@
           "patternProperties": {
             "^API_.*": {
               "pattern": "^api-key",
-              "required": [],
               "type": "string"
             },
             "^EMAIL_.*": {
               "format": "idn-email",
-              "required": [],
               "type": "string"
             }
           },
@@ -39,13 +37,11 @@
             "name@domain.tld"
           ],
           "format": "idn-email",
-          "required": [],
           "title": "contact"
         },
         "enabled": {
           "default": true,
           "description": "Type will be parsed as boolean",
-          "required": [],
           "title": "enabled",
           "type": "boolean"
         },
@@ -58,7 +54,6 @@
                 "admin@example.org"
               ],
               "format": "idn-email",
-              "required": [],
               "title": "ADMIN_EMAIL",
               "type": "string"
             },
@@ -67,7 +62,6 @@
                 "https://api.example.org"
               ],
               "format": "idn-hostname",
-              "required": [],
               "title": "API_URL",
               "type": "string"
             },
@@ -76,12 +70,10 @@
               "examples": [
                 "/path/to/config"
               ],
-              "required": [],
               "title": "CONFIG_PATH",
               "type": "string"
             }
           },
-          "required": [],
           "title": "env"
         },
         "externalIP": {
@@ -90,7 +82,6 @@
             443,
             80
           ],
-          "required": [],
           "title": "externalIP"
         },
         "hosts": {
@@ -101,7 +92,6 @@
                 "properties": {
                   "url": {
                     "format": "idn-hostname",
-                    "required": [],
                     "type": "string"
                   }
                 },
@@ -112,29 +102,23 @@
             "required": [],
             "type": "object"
           },
-          "required": [],
           "title": "hosts",
           "type": "array"
         },
         "maintainer": {
           "const": "maintainer@example.org",
           "default": "maintainer@example.org",
-          "required": [],
           "title": "maintainer"
         },
         "name": {
           "anyOf": [
+            {},
             {
-              "required": []
-            },
-            {
-              "pattern": "^foo-",
-              "required": []
+              "pattern": "^foo-"
             }
           ],
           "default": "",
           "description": "Name of the deployed service. Defined in the schema annotation",
-          "required": [],
           "title": "name"
         },
         "otherExternalIP": {
@@ -143,7 +127,6 @@
             443,
             80
           ],
-          "required": [],
           "title": "otherExternalIP",
           "type": "integer"
         },
@@ -151,7 +134,6 @@
           "default": 80,
           "maximum": 89,
           "minimum": 80,
-          "required": [],
           "title": "port",
           "type": "integer"
         },
@@ -163,13 +145,11 @@
             "20Gib"
           ],
           "pattern": "^[1-9][0-9]*Gib$",
-          "required": [],
           "title": "storage",
           "type": "string"
         },
         "telemetry": {
           "default": true,
-          "required": [],
           "title": "telemetry",
           "type": "boolean"
         },
@@ -180,13 +160,9 @@
             "controller",
             "api"
           ],
-          "required": [],
           "title": "type"
         }
       },
-      "required": [
-        "enabled"
-      ],
       "title": "service"
     }
   },

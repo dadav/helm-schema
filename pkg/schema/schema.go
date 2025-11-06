@@ -179,6 +179,14 @@ func (s *StringOrArrayOfString) IsEmpty() bool {
 	return len(*s) == 0
 }
 
+func (s *StringOrArrayOfString) canDropRequired() bool {
+	ss := *s
+	return len(ss) == 1 && (ss[0] == "string" ||
+		ss[0] == "number" || ss[0] == "boolean" ||
+		ss[0] == "integer" || ss[0] == "null" ||
+		ss[0] == "array")
+}
+
 func (s *StringOrArrayOfString) Matches(typeString string) bool {
 	for _, t := range []string(*s) {
 		if t == typeString {
@@ -212,6 +220,11 @@ func (s *Schema) MarshalJSON() ([]byte, error) {
 	}
 
 	delete(data, "CustomAnnotations")
+
+	// Remove "required" if the schema type is not object
+	if s.Type.canDropRequired() {
+		delete(data, "required")
+	}
 
 	// Marshal the final map into JSON
 	return json.Marshal(data)

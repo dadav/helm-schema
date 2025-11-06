@@ -8,7 +8,6 @@
       "properties": {
         "baz": {
           "description": "from ref",
-          "required": [],
           "type": "string"
         }
       },
@@ -21,7 +20,6 @@
     "foo": {
       "default": "bar",
       "description": "from ref",
-      "required": [],
       "title": "foo",
       "type": "string"
     },

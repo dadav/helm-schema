@@ -13,25 +13,21 @@
       "properties": {
         "enabled": {
           "default": false,
-          "required": [],
           "title": "enabled",
           "type": "boolean"
         },
         "maxReplicas": {
           "default": 100,
-          "required": [],
           "title": "maxReplicas",
           "type": "integer"
         },
         "minReplicas": {
           "default": 1,
-          "required": [],
           "title": "minReplicas",
           "type": "integer"
         },
         "targetCPUUtilizationPercentage": {
           "default": 80,
-          "required": [],
           "title": "targetCPUUtilizationPercentage",
           "type": "integer"
         }
@@ -47,7 +43,6 @@
     },
     "fullnameOverride": {
       "default": "",
-      "required": [],
       "title": "fullnameOverride",
       "type": "string"
     },
@@ -62,20 +57,17 @@
       "properties": {
         "pullPolicy": {
           "default": "IfNotPresent",
-          "required": [],
           "title": "pullPolicy",
           "type": "string"
         },
         "repository": {
           "default": "nginx",
-          "required": [],
           "title": "repository",
           "type": "string"
         },
         "tag": {
           "default": "",
           "description": "Overrides the image tag whose default is the chart appVersion.",
-          "required": [],
           "title": "tag",
           "type": "string"
         }
@@ -89,10 +81,7 @@
       "type": "object"
     },
     "imagePullSecrets": {
-      "items": {
-        "required": []
-      },
-      "required": [],
+      "items": {},
       "title": "imagePullSecrets",
       "type": "array"
     },
@@ -107,13 +96,11 @@
         },
         "className": {
           "default": "",
-          "required": [],
           "title": "className",
           "type": "string"
         },
         "enabled": {
           "default": false,
-          "required": [],
           "title": "enabled",
           "type": "boolean"
         },
@@ -126,7 +113,6 @@
                 "properties": {
                   "host": {
                     "default": "chart-example.local",
-                    "required": [],
                     "title": "host",
                     "type": "string"
                   },
@@ -138,13 +124,11 @@
                           "properties": {
                             "path": {
                               "default": "/",
-                              "required": [],
                               "title": "path",
                               "type": "string"
                             },
                             "pathType": {
                               "default": "ImplementationSpecific",
-                              "required": [],
                               "title": "pathType",
                               "type": "string"
                             }
@@ -155,10 +139,8 @@
                           ],
                           "type": "object"
                         }
-                      ],
-                      "required": []
+                      ]
                     },
-                    "required": [],
                     "title": "paths",
                     "type": "array"
                   }
@@ -169,18 +151,13 @@
                 ],
                 "type": "object"
               }
-            ],
-            "required": []
+            ]
           },
-          "required": [],
           "title": "hosts",
           "type": "array"
         },
         "tls": {
-          "items": {
-            "required": []
-          },
-          "required": [],
+          "items": {},
           "title": "tls",
           "type": "array"
         }
@@ -203,13 +180,11 @@
           "properties": {
             "path": {
               "default": "/",
-              "required": [],
               "title": "path",
               "type": "string"
             },
             "port": {
               "default": "http",
-              "required": [],
               "title": "port",
               "type": "string"
             }
@@ -230,7 +205,6 @@
     },
     "nameOverride": {
       "default": "",
-      "required": [],
       "title": "nameOverride",
       "type": "string"
     },
@@ -266,13 +240,11 @@
           "properties": {
             "path": {
               "default": "/",
-              "required": [],
               "title": "path",
               "type": "string"
             },
             "port": {
               "default": "http",
-              "required": [],
               "title": "port",
               "type": "string"
             }
@@ -293,7 +265,6 @@
     },
     "replicaCount": {
       "default": 1,
-      "required": [],
       "title": "replicaCount",
       "type": "integer"
     },
@@ -314,13 +285,11 @@
       "properties": {
         "port": {
           "default": 80,
-          "required": [],
           "title": "port",
           "type": "integer"
         },
         "type": {
           "default": "ClusterIP",
-          "required": [],
           "title": "type",
           "type": "string"
         }
@@ -345,21 +314,18 @@
         "automount": {
           "default": true,
           "description": "Automatically mount a ServiceAccount's API credentials?",
-          "required": [],
           "title": "automount",
           "type": "boolean"
         },
         "create": {
           "default": true,
           "description": "Specifies whether a service account should be created",
-          "required": [],
           "title": "create",
           "type": "boolean"
         },
         "name": {
           "default": "",
           "description": "The name of the service account to use.\nIf not set and create is true, a name is generated using the fullname template",
-          "required": [],
           "title": "name",
           "type": "string"
         }
@@ -374,28 +340,19 @@
       "type": "object"
     },
     "tolerations": {
-      "items": {
-        "required": []
-      },
-      "required": [],
+      "items": {},
       "title": "tolerations",
       "type": "array"
     },
     "volumeMounts": {
       "description": "Additional volumeMounts on the output Deployment definition.",
-      "items": {
-        "required": []
-      },
-      "required": [],
+      "items": {},
       "title": "volumeMounts",
       "type": "array"
     },
     "volumes": {
       "description": "Additional volumes on the output Deployment definition.",
-      "items": {
-        "required": []
-      },
-      "required": [],
+      "items": {},
       "title": "volumes",
       "type": "array"
     }
