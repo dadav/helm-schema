@@ -10,12 +10,30 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dadav/helm-schema/pkg/chart"
 	"github.com/dadav/helm-schema/pkg/chart/searching"
 	"github.com/dadav/helm-schema/pkg/schema"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+// getDependencyNames extracts dependency names (or aliases if present) from a chart
+// filtering based on the provided dependenciesFilterMap
+func getDependencyNames(dependencies []*chart.Dependency, dependenciesFilterMap map[string]bool) []string {
+	var depNames []string
+	for _, dep := range dependencies {
+		if len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name] {
+			continue
+		}
+		if dep.Alias != "" {
+			depNames = append(depNames, dep.Alias)
+		} else if dep.Name != "" {
+			depNames = append(depNames, dep.Name)
+		}
+	}
+	return depNames
+}
 
 func exec(cmd *cobra.Command, _ []string) error {
 	configureLogging()
@@ -227,18 +245,8 @@ loop:
 
 		// Handle skip-dependencies-schema-validation flag
 		if skipDepsSchemaValidation && !noDeps {
-			// Collect dependency names
-			var depNames []string
-			for _, dep := range result.Chart.Dependencies {
-				if len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name] {
-					continue
-				}
-				if dep.Alias != "" {
-					depNames = append(depNames, dep.Alias)
-				} else if dep.Name != "" {
-					depNames = append(depNames, dep.Name)
-				}
-			}
+			// Collect dependency names using helper function
+			depNames := getDependencyNames(result.Chart.Dependencies, dependenciesFilterMap)
 
 			// Remove dependency names from required properties
 			oldRequired := result.Schema.Required.Strings
@@ -253,6 +261,7 @@ loop:
 			// Set additionalProperties to true for dependency schemas
 			for _, depName := range depNames {
 				if prop, ok := result.Schema.Properties[depName]; ok {
+					log.Debugf("Setting additionalProperties to true for dependency %s in chart %s", depName, result.Chart.Name)
 					prop.AdditionalProperties = true
 				}
 			}
