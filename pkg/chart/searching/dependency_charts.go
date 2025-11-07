@@ -39,8 +39,21 @@ func extractTGZ(src, dest string) error {
 			return err
 		}
 
-		// Resolve file path
-		target := filepath.Join(dest, header.Name)
+		// Resolve and sanitize file path
+		cleanName := filepath.Clean(header.Name)
+		// Prevent absolute paths
+		if filepath.IsAbs(cleanName) {
+			return fmt.Errorf("tar entry has absolute path: %s", cleanName)
+		}
+		// Prevent path traversal outside dest
+		target := filepath.Join(dest, cleanName)
+		rel, err := filepath.Rel(dest, target)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %v", err)
+		}
+		if strings.HasPrefix(rel, "..") || rel == ".." {
+			return fmt.Errorf("tar entry attempts to write outside destination: %s", cleanName)
+		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
