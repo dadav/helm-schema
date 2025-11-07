@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -34,6 +35,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	dependenciesFilter := viper.GetStringSlice("dependencies-filter")
 	dependenciesFilterMap := make(map[string]bool)
 	dontAddGlobal := viper.GetBool("dont-add-global")
+	skipDepsSchemaValidation := viper.GetBool("skip-dependencies-schema-validation")
 	for _, dep := range dependenciesFilter {
 		dependenciesFilterMap[dep] = true
 	}
@@ -219,6 +221,39 @@ loop:
 					}
 				} else {
 					log.Warnf("Dependency without name found (checkout %s).", result.ChartPath)
+				}
+			}
+		}
+
+		// Handle skip-dependencies-schema-validation flag
+		if skipDepsSchemaValidation && !noDeps {
+			// Collect dependency names
+			var depNames []string
+			for _, dep := range result.Chart.Dependencies {
+				if len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name] {
+					continue
+				}
+				if dep.Alias != "" {
+					depNames = append(depNames, dep.Alias)
+				} else if dep.Name != "" {
+					depNames = append(depNames, dep.Name)
+				}
+			}
+
+			// Remove dependency names from required properties
+			oldRequired := result.Schema.Required.Strings
+			var newRequired []string
+			for _, n := range oldRequired {
+				if !slices.Contains(depNames, n) {
+					newRequired = append(newRequired, n)
+				}
+			}
+			result.Schema.Required.Strings = newRequired
+
+			// Set additionalProperties to true for dependency schemas
+			for _, depName := range depNames {
+				if prop, ok := result.Schema.Properties[depName]; ok {
+					prop.AdditionalProperties = true
 				}
 			}
 		}
