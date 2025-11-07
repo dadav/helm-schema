@@ -135,7 +135,7 @@ func SearchArchivesOpenTemp(startPath string, errs chan<- error) string {
 			return nil
 		}
 		if strings.HasSuffix(info.Name(), ".tgz") || strings.HasSuffix(info.Name(), ".tar.gz") {
-			//unzip archived charts from deps
+			//extract archived charts from deps
 			if tempDir == "" {
 				relativeDir := filepath.Dir(path)
 				tempDir, err = os.MkdirTemp(relativeDir, "tmp-*")
