@@ -57,7 +57,9 @@ func exec(cmd *cobra.Command, _ []string) error {
 	done := make(chan struct{})
 
 	tempDir := searching.SearchArchivesOpenTemp(chartSearchRoot, errs)
-	defer os.RemoveAll(tempDir)
+	if tempDir != "" {
+		defer os.RemoveAll(tempDir)
+	}
 
 	go searching.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
 
