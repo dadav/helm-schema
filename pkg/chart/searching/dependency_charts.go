@@ -72,10 +72,12 @@ func extractTGZ(src, dest string) error {
 			if err != nil {
 				return err
 			}
-			defer outFile.Close()
-
 			// Copy file content
 			if _, err := io.Copy(outFile, tr); err != nil {
+				outFile.Close()
+				return err
+			}
+			if err := outFile.Close(); err != nil {
 				return err
 			}
 		}
