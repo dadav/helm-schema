@@ -1,1 +1,4 @@
 *_generated.schema.json
+helm-schema
+test_repo_example.yaml
+test_repo_example_expected.schema.json
