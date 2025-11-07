@@ -119,7 +119,7 @@ func SearchArchivesOpenTemp(startPath string, errs chan<- error) string {
 			errs <- err
 			return nil
 		}
-		if strings.Contains(info.Name(), "tgz") {
+		if strings.HasSuffix(info.Name(), ".tgz") || strings.HasSuffix(info.Name(), ".tar.gz") {
 			//unzip archived charts from deps
 			if tempDir == "" {
 				relativeDir := filepath.Dir(path)
