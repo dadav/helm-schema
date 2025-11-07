@@ -78,23 +78,24 @@ The binary has the following options:
 
 ```sh
 Flags:
-  -r, --add-schema-reference          "add reference to schema in values.yaml if not found"
-  -a, --append-newline                "append newline to generated jsonschema at the end of the file"
-  -c, --chart-search-root string      "directory to search recursively within for charts (default ".")"
-  -i, --dependencies-filter strings   "only generate schema for specified dependencies (comma-separated list of dependency names)"
-  -g, --dont-add-global               "dont auto add global property"
-  -x, --dont-strip-helm-docs-prefix   "disable the removal of the helm-docs prefix (--)"
-  -d, --dry-run                       "don't actually create files just print to stdout passed"
-  -p, --helm-docs-compatibility-mode  "parse and use helm-docs comments"
-  -h, --help                          "help for helm-schema"
-  -s, --keep-full-comment             "keep the whole leading comment (default: cut at empty line)"
-  -l, --log-level string              "level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
-  -n, --no-dependencies               "don't analyze dependencies"
-  -o, --output-file string            "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
-  -f, --value-files strings           "filenames to check for chart values (default [values.yaml])"
-  -k, --skip-auto-generation strings  "skip the auto generation for these fields (default [])"
-  -u, --uncomment                     "consider yaml which is commented out"
-  -v, --version                       "version for helm-schema"
+  -r, --add-schema-reference                   "add reference to schema in values.yaml if not found"
+  -a, --append-newline                         "append newline to generated jsonschema at the end of the file"
+  -c, --chart-search-root string               "directory to search recursively within for charts (default ".")"
+  -i, --dependencies-filter strings            "only generate schema for specified dependencies (comma-separated list of dependency names)"
+  -g, --dont-add-global                        "dont auto add global property"
+  -x, --dont-strip-helm-docs-prefix            "disable the removal of the helm-docs prefix (--)"
+  -d, --dry-run                                "don't actually create files just print to stdout passed"
+  -p, --helm-docs-compatibility-mode           "parse and use helm-docs comments"
+  -h, --help                                   "help for helm-schema"
+  -s, --keep-full-comment                      "keep the whole leading comment (default: cut at empty line)"
+  -l, --log-level string                       "level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
+  -n, --no-dependencies                        "don't analyze dependencies"
+  -o, --output-file string                     "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
+  -m, --skip-dependencies-schema-validation    "skip schema validation for dependencies by setting additionalProperties to true and removing from required"
+  -f, --value-files strings                    "filenames to check for chart values (default [values.yaml])"
+  -k, --skip-auto-generation strings           "skip the auto generation for these fields (default [])"
+  -u, --uncomment                              "consider yaml which is commented out"
+  -v, --version                                "version for helm-schema"
 ```
 
 ## Annotations
@@ -202,6 +203,23 @@ are used if detected.
 Per default, `helm-schema` will try to also create the schemas for the dependencies in their respective chart directory. These schemas will be merged as properties in the main schema, but the `requiredProperties` field will be nullified, otherwise you would have to always overwrite all the required fields.
 
 If you don't want to generate `jsonschema` for chart dependencies, you can use the `-n, --no-dependencies` option to only generate the `values.schema.json` for your parent chart(s)
+
+### Skip Dependency Schema Validation
+
+By default, when dependency schemas are merged into the parent chart schema, they inherit strict validation rules. This means that if you add unknown keys at the top level of a dependency's values (e.g., `subchart.unknownKey`), validation may not fail as expected.
+
+If you want to allow additional properties in dependency schemas and ensure they are not required, you can use the `-m, --skip-dependencies-schema-validation` flag. This will:
+
+1. Set `additionalProperties: true` for all dependency schemas in the parent chart
+2. Remove dependency names from the parent chart's required properties list
+
+Example usage:
+
+```sh
+helm-schema -m
+```
+
+This is useful when you have umbrella charts with multiple dependencies and want to allow flexibility in overriding dependency values without strict schema validation.
 
 ## Limitations
 
