@@ -1,0 +1,6 @@
+apiVersion: v2
+name: umbrella
+version: 1.0.0
+dependencies:
+  - name: subchart
+    version: "1.0.0"
