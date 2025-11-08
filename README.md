@@ -79,6 +79,7 @@ The binary has the following options:
 ```sh
 Flags:
   -r, --add-schema-reference                   "add reference to schema in values.yaml if not found"
+  -w, --allow-circular-dependencies            "allow circular dependencies between charts (will log a warning instead of failing)"
   -a, --append-newline                         "append newline to generated jsonschema at the end of the file"
   -c, --chart-search-root string               "directory to search recursively within for charts (default ".")"
   -i, --dependencies-filter strings            "only generate schema for specified dependencies (comma-separated list of dependency names)"
@@ -220,6 +221,24 @@ helm-schema -m
 ```
 
 This is useful when you have umbrella charts with multiple dependencies and want to allow flexibility in overriding dependency values without strict schema validation.
+
+### Handling Circular Dependencies
+
+In some scenarios, you may have charts that reference each other to share values, creating circular dependencies. For example:
+- A cert-manager chart depends on a grafana chart to get the instance name for creating dashboards
+- The grafana chart depends on the cert-manager chart to get the ACME issuer value
+
+By default, `helm-schema` will detect this as a circular dependency and log a warning. The tool will still continue processing, but the results may not be sorted in dependency order.
+
+If you want to explicitly allow circular dependencies and acknowledge this behavior, you can use the `-w, --allow-circular-dependencies` flag:
+
+```sh
+helm-schema -w
+```
+
+When this flag is enabled, circular dependencies are treated as warnings rather than errors, and the charts are processed in their original discovery order instead of topologically sorted order.
+
+**Note:** This is primarily useful when charts have cross-dependencies purely for value sharing, not for actual build order dependencies.
 
 ## Limitations
 
