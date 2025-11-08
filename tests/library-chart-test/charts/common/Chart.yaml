@@ -1,0 +1,5 @@
+apiVersion: v2
+name: common
+description: Common library chart for testing
+type: library
+version: 1.0.0
