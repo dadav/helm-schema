@@ -220,18 +220,38 @@ loop:
 							dependencyResult.Chart.Name,
 							dependencyResult.ChartPath,
 						)
-						depSchema := schema.Schema{
-							Type:        []string{"object"},
-							Title:       dep.Name,
-							Description: dependencyResult.Chart.Description,
-							Properties:  dependencyResult.Schema.Properties,
-						}
-						depSchema.DisableRequiredProperties()
 
-						if dep.Alias != "" {
-							result.Schema.Properties[dep.Alias] = &depSchema
+						// Check if this is a library chart
+						if dependencyResult.Chart.Type == "library" {
+							// For library charts, merge properties directly into parent schema
+							log.Debugf("Merging library chart %s properties into parent chart %s at top level", dep.Name, result.Chart.Name)
+							for propName, propSchema := range dependencyResult.Schema.Properties {
+								// Skip the global property as it's already in the parent
+								if propName == "global" {
+									continue
+								}
+								// Only add if the property doesn't already exist in parent
+								if _, exists := result.Schema.Properties[propName]; !exists {
+									result.Schema.Properties[propName] = propSchema
+								} else {
+									log.Warnf("Property %s from library chart %s already exists in parent chart %s, skipping", propName, dep.Name, result.Chart.Name)
+								}
+							}
 						} else {
-							result.Schema.Properties[dep.Name] = &depSchema
+							// For non-library charts, nest under dependency name (existing behavior)
+							depSchema := schema.Schema{
+								Type:        []string{"object"},
+								Title:       dep.Name,
+								Description: dependencyResult.Chart.Description,
+								Properties:  dependencyResult.Schema.Properties,
+							}
+							depSchema.DisableRequiredProperties()
+
+							if dep.Alias != "" {
+								result.Schema.Properties[dep.Alias] = &depSchema
+							} else {
+								result.Schema.Properties[dep.Name] = &depSchema
+							}
 						}
 
 					} else {
