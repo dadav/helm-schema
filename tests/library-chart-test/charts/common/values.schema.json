@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "environment": {
+      "default": "production",
+      "description": "Library chart values that should be merged at top level",
+      "title": "environment",
+      "type": "string"
+    },
+    "global": {
+      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+      "required": [],
+      "title": "global",
+      "type": "object"
+    },
+    "region": {
+      "default": "us-west-1",
+      "title": "region",
+      "type": "string"
+    }
+  },
+  "required": [
+    "environment",
+    "region"
+  ],
+  "type": "object"
+}

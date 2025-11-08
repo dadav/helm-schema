@@ -1,0 +1,3 @@
+# Library chart values that should be merged at top level
+environment: production
+region: us-west-1
