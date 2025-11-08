@@ -5,7 +5,8 @@ import (
 )
 
 // TopoSort uses topological sorting to sort the results
-func TopoSort(results []*Result) ([]*Result, error) {
+// If allowCircular is true, circular dependencies will be logged as warnings and results will be returned unsorted
+func TopoSort(results []*Result, allowCircular bool) ([]*Result, error) {
 	// Map chart names to their Result objects for easy lookup
 	chartMap := make(map[string]*Result)
 	for _, r := range results {
@@ -77,6 +78,10 @@ func TopoSort(results []*Result) ([]*Result, error) {
 	for _, r := range results {
 		if r.Chart != nil {
 			if err := visit(r.Chart.Name); err != nil {
+				if allowCircular {
+					// Return unsorted results when circular dependencies are allowed
+					return results, err
+				}
 				return nil, err
 			}
 		}

@@ -54,6 +54,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	dependenciesFilterMap := make(map[string]bool)
 	dontAddGlobal := viper.GetBool("dont-add-global")
 	skipDepsSchemaValidation := viper.GetBool("skip-dependencies-schema-validation")
+	allowCircularDeps := viper.GetBool("allow-circular-dependencies")
 	for _, dep := range dependenciesFilter {
 		dependenciesFilterMap[dep] = true
 	}
@@ -125,7 +126,7 @@ loop:
 	}
 
 	if !noDeps {
-		results, err = schema.TopoSort(results)
+		results, err = schema.TopoSort(results, allowCircularDeps)
 		if err != nil {
 			if _, ok := err.(*schema.CircularError); !ok {
 				log.Errorf("Error while sorting results: %s", err)
