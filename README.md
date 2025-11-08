@@ -204,6 +204,14 @@ Per default, `helm-schema` will try to also create the schemas for the dependenc
 
 If you don't want to generate `jsonschema` for chart dependencies, you can use the `-n, --no-dependencies` option to only generate the `values.schema.json` for your parent chart(s)
 
+### Library Charts
+
+When a dependency has `type: library` in its `Chart.yaml`, `helm-schema` will merge its schema properties directly into the parent chart's schema at the top level, rather than nesting them under the dependency name. This reflects how [Helm library charts](https://helm.sh/docs/topics/library_charts/) work in practice, where the values scope is identical to the parent chart.
+
+For example, if you have a library chart named `common` with properties `environment` and `region`, these will appear at the top level of the parent schema alongside the parent's own properties, rather than under a `common` key.
+
+**Note:** If a library chart property has the same name as a property already defined in the parent chart, the parent's property takes precedence and a warning will be logged.
+
 ### Skip Dependency Schema Validation
 
 By default, when dependency schemas are merged into the parent chart schema, they inherit strict validation rules. This means that if you add unknown keys at the top level of a dependency's values (e.g., `subchart.unknownKey`), validation may not fail as expected.
