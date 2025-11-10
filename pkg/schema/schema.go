@@ -23,8 +23,9 @@ import (
 
 // SchemaPrefix and CommentPrefix define the markers used for schema annotations in comments
 const (
-	SchemaPrefix  = "# @schema"
-	CommentPrefix = "#"
+	SchemaPrefix     = "# @schema"
+	SchemaRootPrefix = "# @schema.root"
+	CommentPrefix    = "#"
 
 	// CustomAnnotationPrefix marks custom annotations.
 	// Custom annotations are extensions to the JSON Schema specification
@@ -748,6 +749,49 @@ func FixRequiredProperties(schema *Schema) error {
 	return nil
 }
 
+// GetRootSchemaFromComment parses root-level schema annotations (marked with @schema.root)
+// from a comment and returns the schema, the remaining comment (without root annotations),
+// and any error. Root schema annotations are useful for applying schema properties to the
+// entire values file rather than individual keys.
+func GetRootSchemaFromComment(comment string) (Schema, string, error) {
+	var result Schema
+	scanner := bufio.NewScanner(strings.NewReader(comment))
+	rootSchemaLines := []string{}
+	remainingCommentLines := []string{}
+	insideRootSchemaBlock := false
+	foundRootSchema := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, SchemaRootPrefix) {
+			insideRootSchemaBlock = !insideRootSchemaBlock
+			foundRootSchema = true
+			continue
+		}
+		if insideRootSchemaBlock {
+			content := strings.TrimPrefix(line, CommentPrefix)
+			rootSchemaLines = append(rootSchemaLines, strings.TrimPrefix(strings.TrimPrefix(content, CommentPrefix), " "))
+			result.Set()
+		} else {
+			remainingCommentLines = append(remainingCommentLines, line)
+		}
+	}
+
+	if insideRootSchemaBlock {
+		return result, "",
+			fmt.Errorf("unclosed root schema block found in comment: %s", comment)
+	}
+
+	if foundRootSchema {
+		err := yaml.Unmarshal([]byte(strings.Join(rootSchemaLines, "\n")), &result)
+		if err != nil {
+			return result, "", err
+		}
+	}
+
+	return result, strings.Join(remainingCommentLines, "\n"), nil
+}
+
 // GetSchemaFromComment parses the annotations from the given comment
 func GetSchemaFromComment(comment string) (Schema, string, error) {
 	var result Schema
@@ -812,7 +856,8 @@ func YamlToSchema(
 		}
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
-		schema.Properties = YamlToSchema(
+
+		childSchema := YamlToSchema(
 			valuesPath,
 			node.Content[0],
 			keepFullComment,
@@ -821,7 +866,43 @@ func YamlToSchema(
 			dontAddGlobal,
 			skipAutoGeneration,
 			&schema.Required.Strings,
-		).Properties
+		)
+		
+		schema.Properties = childSchema.Properties
+		
+		// Apply root schema properties from child if they were set
+		if childSchema.Title != "" {
+			schema.Title = childSchema.Title
+		}
+		if childSchema.Description != "" {
+			schema.Description = childSchema.Description
+		}
+		if childSchema.Ref != "" {
+			schema.Ref = childSchema.Ref
+		}
+		if len(childSchema.Examples) > 0 {
+			schema.Examples = childSchema.Examples
+		}
+		if childSchema.Deprecated {
+			schema.Deprecated = childSchema.Deprecated
+		}
+		if childSchema.ReadOnly {
+			schema.ReadOnly = childSchema.ReadOnly
+		}
+		if childSchema.WriteOnly {
+			schema.WriteOnly = childSchema.WriteOnly
+		}
+		if childSchema.AdditionalProperties != nil {
+			schema.AdditionalProperties = childSchema.AdditionalProperties
+		}
+		if len(childSchema.CustomAnnotations) > 0 {
+			if schema.CustomAnnotations == nil {
+				schema.CustomAnnotations = make(map[string]interface{})
+			}
+			for k, v := range childSchema.CustomAnnotations {
+				schema.CustomAnnotations[k] = v
+			}
+		}
 
 		if _, ok := schema.Properties["global"]; !ok && !dontAddGlobal {
 			// global key must be present, otherwise helm lint will fail
@@ -839,11 +920,72 @@ func YamlToSchema(
 			}
 		}
 
-		// always disable on top level
-		if !skipAutoGeneration.AdditionalProperties {
+		// always disable on top level (unless root schema specifies otherwise)
+		if !skipAutoGeneration.AdditionalProperties && schema.AdditionalProperties == nil {
 			schema.AdditionalProperties = new(bool)
 		}
 	case yaml.MappingNode:
+		// Check if the first key has root schema annotations (only for root-level mappings)
+		if len(node.Content) > 0 && parentRequiredProperties != nil {
+			firstKeyNode := node.Content[0]
+			
+			comment := firstKeyNode.HeadComment
+			if !keepFullComment {
+				leadingCommentsRemover := regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
+				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
+			}
+			
+			// Try to extract root schema annotations
+			rootSchema, remainingComment, err := GetRootSchemaFromComment(comment)
+			if err != nil {
+				log.Fatalf("Error while parsing root schema comment: %v", err)
+			}
+			
+			if rootSchema.HasData {
+				// Apply root schema annotations to the schema being built
+				if rootSchema.Title != "" {
+					schema.Title = rootSchema.Title
+				}
+				if rootSchema.Description != "" {
+					schema.Description = rootSchema.Description
+				}
+				if rootSchema.Ref != "" {
+					handleSchemaRefs(&rootSchema, valuesPath)
+					schema.Ref = rootSchema.Ref
+				}
+				if len(rootSchema.Examples) > 0 {
+					schema.Examples = rootSchema.Examples
+				}
+				if rootSchema.Deprecated {
+					schema.Deprecated = rootSchema.Deprecated
+				}
+				if rootSchema.ReadOnly {
+					schema.ReadOnly = rootSchema.ReadOnly
+				}
+				if rootSchema.WriteOnly {
+					schema.WriteOnly = rootSchema.WriteOnly
+				}
+				if rootSchema.AdditionalProperties != nil {
+					schema.AdditionalProperties = rootSchema.AdditionalProperties
+				}
+				if len(rootSchema.CustomAnnotations) > 0 {
+					if schema.CustomAnnotations == nil {
+						schema.CustomAnnotations = make(map[string]interface{})
+					}
+					for k, v := range rootSchema.CustomAnnotations {
+						schema.CustomAnnotations[k] = v
+					}
+				}
+				
+				if err := rootSchema.Validate(); err != nil {
+					log.Fatalf("Error while validating root jsonschema: %v", err)
+				}
+				
+				// Update the first key's comment to exclude the root schema annotations
+				firstKeyNode.HeadComment = remainingComment
+			}
+		}
+		
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]

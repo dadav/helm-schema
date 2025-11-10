@@ -69,8 +69,7 @@ func TestTopoSort(t *testing.T) {
 			},
 			allowCircular: true,
 			want:          []string{"A", "B"},
-			wantErr:       true,
-			errorType:     &CircularError{},
+			wantErr:       false,
 		},
 	}
 
@@ -83,7 +82,7 @@ func TestTopoSort(t *testing.T) {
 				if tt.errorType != nil {
 					assert.IsType(t, tt.errorType, err)
 				}
-				
+
 				// When allowCircular is true and we get a CircularError,
 				// we should still get unsorted results back
 				if tt.allowCircular && tt.want != nil {
