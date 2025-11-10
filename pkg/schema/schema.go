@@ -243,6 +243,7 @@ type Schema struct {
 	Then                 *Schema                `yaml:"then,omitempty"                 json:"then,omitempty"`
 	PatternProperties    map[string]*Schema     `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
 	Properties           map[string]*Schema     `yaml:"properties,omitempty"           json:"properties,omitempty"`
+	Defs                 map[string]*Schema     `yaml:"$defs,omitempty"                json:"$defs,omitempty"`
 	If                   *Schema                `yaml:"if,omitempty"                   json:"if,omitempty"`
 	Minimum              *int                   `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
 	MultipleOf           *int                   `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
@@ -791,8 +792,10 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 //   - keepFullComment: whether to preserve all comment text
 //   - helmDocsCompatibilityMode: whether to parse helm-docs annotations
 //   - dontRemoveHelmDocsPrefix: whether to keep helm-docs prefixes in comments
+//   - dontAddGlobal: whether to skip adding the global property
 //   - skipAutoGeneration: configuration for which fields should not be auto-generated
 //   - parentRequiredProperties: list of required properties to populate in parent
+//   - collectedDefs: map to collect $defs from referenced schemas (only used at document level)
 func YamlToSchema(
 	valuesPath string,
 	node *yaml.Node,
@@ -802,6 +805,7 @@ func YamlToSchema(
 	dontAddGlobal bool,
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
+	collectedDefs *map[string]*Schema,
 ) *Schema {
 	schema := NewSchema("object")
 
@@ -812,6 +816,10 @@ func YamlToSchema(
 		}
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
+		
+		// Create a map to collect $defs from referenced schemas
+		collectedDefsMap := make(map[string]*Schema)
+		
 		schema.Properties = YamlToSchema(
 			valuesPath,
 			node.Content[0],
@@ -821,7 +829,13 @@ func YamlToSchema(
 			dontAddGlobal,
 			skipAutoGeneration,
 			&schema.Required.Strings,
+			&collectedDefsMap,
 		).Properties
+		
+		// Merge collected $defs into the root schema
+		if len(collectedDefsMap) > 0 {
+			schema.Defs = collectedDefsMap
+		}
 
 		if _, ok := schema.Properties["global"]; !ok && !dontAddGlobal {
 			// global key must be present, otherwise helm lint will fail
@@ -896,7 +910,7 @@ func YamlToSchema(
 
 			if keyNodeSchema.Ref != "" || len(keyNodeSchema.PatternProperties) > 0 {
 				// Handle $ref in main schema and pattern properties
-				handleSchemaRefs(&keyNodeSchema, valuesPath)
+				handleSchemaRefs(&keyNodeSchema, valuesPath, collectedDefs)
 			}
 
 			if keyNodeSchema.HasData {
@@ -961,6 +975,7 @@ func YamlToSchema(
 						dontAddGlobal,
 						skipAutoGeneration,
 						&keyNodeSchema.Required.Strings,
+						collectedDefs,
 					).Properties
 
 					// Process each property
@@ -999,7 +1014,7 @@ func YamlToSchema(
 							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
-							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties)
+							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties, collectedDefs)
 
 							itemSchema.Required.Strings = append(itemSchema.Required.Strings, itemRequiredProperties...)
 
@@ -1094,14 +1109,16 @@ func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
 // - If it's a relative file path, it attempts to load and parse the referenced schema
 // - If it includes a JSON pointer (#/path/to/schema), it extracts the specific schema section
 // - The resolved schema replaces the original reference
+// - Any $defs from the referenced schema are collected in the collectedDefs map for later merging
 //
 // Parameters:
 //   - schema: Pointer to the Schema object containing the references to resolve
 //   - valuesPath: Path to the current values file, used for resolving relative paths
+//   - collectedDefs: Map to collect $defs from referenced schemas (can be nil if not needed)
 //
 // The function will log.Fatal on any critical errors (file not found, invalid JSON, etc.)
 // and log.Debug for non-critical issues (e.g., non-relative paths that may be handled elsewhere)
-func handleSchemaRefs(schema *Schema, valuesPath string) {
+func handleSchemaRefs(schema *Schema, valuesPath string, collectedDefs *map[string]*Schema) {
 	// Handle main schema $ref
 	if schema.Ref != "" {
 		refParts := strings.Split(schema.Ref, "#")
@@ -1135,6 +1152,24 @@ func handleSchemaRefs(schema *Schema, valuesPath string) {
 						log.Fatal(err)
 					}
 				}
+				
+				// Collect $defs from the referenced schema if collectedDefs is provided
+				if collectedDefs != nil && relSchema.Defs != nil {
+					if *collectedDefs == nil {
+						*collectedDefs = make(map[string]*Schema)
+					}
+					for defName, defSchema := range relSchema.Defs {
+						// Check for conflicts and warn if a definition is being overwritten
+						if existingDef, exists := (*collectedDefs)[defName]; exists {
+							log.Warnf("Definition %s is being overwritten during schema merge", defName)
+							_ = existingDef // avoid unused variable warning
+						}
+						(*collectedDefs)[defName] = defSchema
+					}
+					// Remove $defs from the schema being merged, as they'll be at root level
+					relSchema.Defs = nil
+				}
+				
 				*schema = relSchema
 				schema.HasData = true
 			} else {
@@ -1149,7 +1184,7 @@ func handleSchemaRefs(schema *Schema, valuesPath string) {
 	if schema.PatternProperties != nil {
 		for pattern, subSchema := range schema.PatternProperties {
 			if subSchema.Ref != "" {
-				handleSchemaRefs(subSchema, valuesPath)
+				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
 				schema.PatternProperties[pattern] = subSchema // Update the original schema in the map
 			}
 		}
