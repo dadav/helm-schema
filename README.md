@@ -117,6 +117,33 @@ foo: bar
 > [!NOTE]
 > If you don't use the `properties` option on hashes/objects or don't use `items` on arrays, it will be parsed from the values and their annotations instead.
 
+### Root-level annotations
+
+You can apply schema annotations to the root schema object itself using `# @schema.root`:
+
+```yaml
+# @schema.root
+# title: My Chart Values
+# description: Configuration values for my Helm chart
+# x-custom-field: custom-value
+# @schema.root
+# First key description
+foo: bar
+```
+
+This will apply the `title`, `description`, and custom annotations to the root schema object, while the comment after the `@schema.root` block applies to the `foo` key.
+
+Root-level annotations support all the same properties as regular annotations, including:
+- `title` and `description`
+- `additionalProperties`
+- Custom annotations (prefixed with `x-`)
+- `deprecated`, `readOnly`, `writeOnly`
+- `examples`
+- And more
+
+> [!NOTE]
+> The `@schema.root` block must be placed before the first key in your `values.yaml` file.
+
 ### Available annotations
 
 <!-- prettier-ignore -->
@@ -316,6 +343,30 @@ enabled: true
 # @schema
 cpu: 1
 ```
+
+#### Root schema annotations
+
+Apply schema annotations to the root document itself.
+
+```yaml
+# @schema.root
+# title: My Application Configuration
+# description: Complete configuration for deploying my application
+# additionalProperties: true
+# x-version: "1.0"
+# @schema.root
+# Main application settings
+app:
+  name: myapp
+  replicas: 3
+
+# Database configuration  
+database:
+  host: localhost
+  port: 5432
+```
+
+This generates a schema where the root object has the specified title, description, and custom annotations, while each key maintains its own annotations.
 
 #### `title`
 
