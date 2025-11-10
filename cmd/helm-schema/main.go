@@ -128,7 +128,7 @@ loop:
 	if !noDeps {
 		results, err = schema.TopoSort(results, allowCircularDeps)
 		if err != nil {
-			if _, ok := err.(*schema.CircularError); !ok {
+			if _, ok := err.(*schema.CircularError); ok {
 				log.Errorf("Error while sorting results: %s", err)
 				return err
 			} else {

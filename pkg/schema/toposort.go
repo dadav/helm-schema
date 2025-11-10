@@ -80,7 +80,7 @@ func TopoSort(results []*Result, allowCircular bool) ([]*Result, error) {
 			if err := visit(r.Chart.Name); err != nil {
 				if allowCircular {
 					// Return unsorted results when circular dependencies are allowed
-					return results, err
+					return results, nil
 				}
 				return nil, err
 			}
