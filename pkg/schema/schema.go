@@ -1133,6 +1133,27 @@ func handleSchemaRefs(schema *Schema, valuesPath string, collectedDefs *map[stri
 					// Found json-pointer
 					var obj interface{}
 					json.Unmarshal(byteValue, &obj)
+					
+					// First, extract the $defs from the root document if they exist
+					if collectedDefs != nil {
+						var fullSchema Schema
+						err = json.Unmarshal(byteValue, &fullSchema)
+						if err == nil && fullSchema.Defs != nil {
+							if *collectedDefs == nil {
+								*collectedDefs = make(map[string]*Schema)
+							}
+							for defName, defSchema := range fullSchema.Defs {
+								// Check for conflicts and warn if a definition is being overwritten
+								if existingDef, exists := (*collectedDefs)[defName]; exists {
+									log.Warnf("Definition %s is being overwritten during schema merge", defName)
+									_ = existingDef // avoid unused variable warning
+								}
+								(*collectedDefs)[defName] = defSchema
+							}
+						}
+					}
+					
+					// Then extract the specific schema using the JSON pointer
 					jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
 					if err != nil {
 						log.Fatal(err)
@@ -1151,23 +1172,23 @@ func handleSchemaRefs(schema *Schema, valuesPath string, collectedDefs *map[stri
 					if err != nil {
 						log.Fatal(err)
 					}
-				}
-				
-				// Collect $defs from the referenced schema if collectedDefs is provided
-				if collectedDefs != nil && relSchema.Defs != nil {
-					if *collectedDefs == nil {
-						*collectedDefs = make(map[string]*Schema)
-					}
-					for defName, defSchema := range relSchema.Defs {
-						// Check for conflicts and warn if a definition is being overwritten
-						if existingDef, exists := (*collectedDefs)[defName]; exists {
-							log.Warnf("Definition %s is being overwritten during schema merge", defName)
-							_ = existingDef // avoid unused variable warning
+					
+					// Collect $defs from the referenced schema if collectedDefs is provided
+					if collectedDefs != nil && relSchema.Defs != nil {
+						if *collectedDefs == nil {
+							*collectedDefs = make(map[string]*Schema)
 						}
-						(*collectedDefs)[defName] = defSchema
+						for defName, defSchema := range relSchema.Defs {
+							// Check for conflicts and warn if a definition is being overwritten
+							if existingDef, exists := (*collectedDefs)[defName]; exists {
+								log.Warnf("Definition %s is being overwritten during schema merge", defName)
+								_ = existingDef // avoid unused variable warning
+							}
+							(*collectedDefs)[defName] = defSchema
+						}
+						// Remove $defs from the schema being merged, as they'll be at root level
+						relSchema.Defs = nil
 					}
-					// Remove $defs from the schema being merged, as they'll be at root level
-					relSchema.Defs = nil
 				}
 				
 				*schema = relSchema
