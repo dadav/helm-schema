@@ -238,7 +238,7 @@ loop:
 								}
 							}
 						} else {
-							// For non-library charts, nest under dependency name (existing behavior)
+							// For non-library charts, nest under dependency name
 							depSchema := schema.Schema{
 								Type:        []string{"object"},
 								Title:       dep.Name,
@@ -306,7 +306,7 @@ loop:
 			}
 		} else {
 			chartBasePath := filepath.Dir(result.ChartPath)
-			if err := os.WriteFile(filepath.Join(chartBasePath, outFile), jsonStr, 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(chartBasePath, outFile), jsonStr, 0o644); err != nil {
 				errs <- err
 				continue
 			}
