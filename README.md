@@ -142,7 +142,7 @@ Root-level annotations support all the same properties as regular annotations, i
 - And more
 
 > [!NOTE]
-> The `@schema.root` block must be placed before the first key in your `values.yaml` file.
+> The `@schema.root` block must be placed before the first key in your `values.yaml` file, without blank lines after it (unless you use the `-s` flag to keep full comments).
 
 ### Available annotations
 
