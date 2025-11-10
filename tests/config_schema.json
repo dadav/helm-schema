@@ -1,0 +1,28 @@
+{
+  "$defs": {
+    "RestConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "default": "http://localhost:8000/",
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "title": "RestConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Config for the worker application as a whole. Root of config tree.",
+  "properties": {
+    "api": {
+      "$ref": "#/$defs/RestConfig"
+    }
+  },
+  "title": "ApplicationConfig",
+  "type": "object"
+}
