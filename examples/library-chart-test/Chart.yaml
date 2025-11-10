@@ -1,9 +1,0 @@
-apiVersion: v2
-name: test-chart
-description: Test chart for library dependency merging
-type: application
-version: 1.0.0
-dependencies:
-  - name: common
-    version: 1.0.0
-    repository: ""
