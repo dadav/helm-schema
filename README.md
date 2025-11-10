@@ -120,38 +120,40 @@ foo: bar
 ### Available annotations
 
 <!-- prettier-ignore -->
-| Key| Description | Values |
-|-|-|-|
-| [`type`](#type) | Defines the [jsonschema-type](https://json-schema.org/understanding-json-schema/reference/type.html) of the object. Multiple values are supported (e.g. `[string, integer]`) as a shortcut to `anyOf` | `object`, `array`, `string`, `number`, `integer`, `boolean` or `null` |
-| [`title`](#title) | Defines the [title field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=title) of the object | Defaults to the key itself |
-| [`description`](#description) | Defines the [description field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=description) of the object. | Defaults to the comments just above or below the `@schema` annotations block |
-| [`default`](#default) | Sets the default value and will be displayed first on the users IDE| Takes a `string` |
-| [`properties`](#properties) | Contains a map with keys as property names and values as schema | Takes an `object` |
-| [`pattern`](#pattern) | Regex pattern to test the value | Takes an `string` |
-| [`format`](#format) | The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values | Takes a [keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) |
-| [`required`](#required) | Adds the key to the required items | `true` or `false` or `array` |
-| [`deprecated`](#deprecated) | Marks the option as deprecated | `true` or `false` |
-| [`items`](#items) | Contains the schema that describes the possible array items | Takes an `object` |
-| [`enum`](#enum) | Multiple allowed values. Accepts an array of `string` | Takes an `array` |
-| [`const`](#const) | Single allowed value | Takes a `string`|
-| [`examples`](#examples) | Some examples you can provide for the end user | Takes an `array` |
-| [`minimum`](#minimum) | Minimum value. Can't be used with `exclusiveMinimum` | Takes an `integer`. Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
-| [`exclusiveMinimum`](#exclusiveminimum) | Exclusive minimum. Can't be used with `minimum` | Takes an `integer`. Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
-| [`maximum`](#maximum) | Maximum value. Can't be used with `exclusiveMaximum` | Takes an `integer`. Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
-| [`exclusiveMaximum`](#exclusivemaximum) | Exclusive maximum value. Can't be used with `maximum` | Takes an `integer`. Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
-| [`multipleOf`](#multipleof) | The yaml-value must be a multiple of. For example: If you set this to 10, allowed values would be 0, 10, 20, 30... | Takes an `integer` |
-| [`additionalProperties`](#additionalproperties) | Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`, which will be filled with keys that the `jsonschema` can't know| Defaults to `false` if the map is not an empty map. Takes a schema or boolean value |
-| [`patternProperties`](#patternproperties) | Contains a map which maps schemas to pattern. If properties match the patterns, the given schema is applied| Takes an `object` |
-| [`anyOf`](#anyof) | Accepts an array of schemas. None or one must apply | Takes an `array` |
-| [`oneOf`](#oneof) | Accepts an array of schemas. One or more must apply | Takes an `array` |
-| [`allOf`](#allof) | Accepts an array of schemas. All must apply| Takes an `array` |
-| [`not`](#not) | A schema that must not be matched. | Takes an `object` |
-| [`if/then/else`](#ifthenelse) | `if` the given schema applies, `then` also apply the given schema or `else` the other schema| Takes an `object` |
-| [`$ref`](#ref) | Accepts an URI to a valid `jsonschema`. Extend the schema for the current key | Takes an URI (or relative file) |
-| [`minLength`](#minlength) | Minimum string length. | Takes an `integer`. Must be smaller or equal than `maxLength` (if used) |
-| [`maxLength`](#maxlength) | Maximum string length. | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
-| [`minItems`](#minItems) | Minimum length of an array. | Takes an `integer`. Must be smaller or equal than `maxItems` (if used) |
-| [`maxItems`](#maxItems) | Maximum length of an array. | Takes an `integer`. Must be greater or equal than `minItems` (if used) |
+| Key                                             | Description                                                                                                                                                                                           | Values |
+|-------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-|
+| [`type`](#type)                                 | Defines the [jsonschema-type](https://json-schema.org/understanding-json-schema/reference/type.html) of the object. Multiple values are supported (e.g. `[string, integer]`) as a shortcut to `anyOf` | `object`, `array`, `string`, `number`, `integer`, `boolean` or `null` |
+| [`title`](#title)                               | Defines the [title field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=title) of the object                                                                     | Defaults to the key itself |
+| [`description`](#description)                   | Defines the [description field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=description) of the object.                                                        | Defaults to the comments just above or below the `@schema` annotations block |
+| [`default`](#default)                           | Sets the default value and will be displayed first on the users IDE                                                                                                                                   | Takes a `string` |
+| [`properties`](#properties)                     | Contains a map with keys as property names and values as schema                                                                                                                                       | Takes an `object` |
+| [`pattern`](#pattern)                           | Regex pattern to test the value                                                                                                                                                                       | Takes an `string` |
+| [`format`](#format)                             | The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values                       | Takes a [keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) |
+| [`required`](#required)                         | Adds the key to the required items                                                                                                                                                                    | `true` or `false` or `array` |
+| [`deprecated`](#deprecated)                     | Marks the option as deprecated                                                                                                                                                                        | `true` or `false` |
+| [`items`](#items)                               | Contains the schema that describes the possible array items                                                                                                                                           | Takes an `object` |
+| [`enum`](#enum)                                 | Multiple allowed values. Accepts an array of `string`                                                                                                                                                 | Takes an `array` |
+| [`const`](#const)                               | Single allowed value                                                                                                                                                                                  | Takes a `string`|
+| [`examples`](#examples)                         | Some examples you can provide for the end user                                                                                                                                                        | Takes an `array` |
+| [`minimum`](#minimum)                           | Minimum value. Can't be used with `exclusiveMinimum`                                                                                                                                                  | Takes an `integer`. Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
+| [`exclusiveMinimum`](#exclusiveminimum)         | Exclusive minimum. Can't be used with `minimum`                                                                                                                                                       | Takes an `integer`. Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
+| [`maximum`](#maximum)                           | Maximum value. Can't be used with `exclusiveMaximum`                                                                                                                                                  | Takes an `integer`. Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
+| [`exclusiveMaximum`](#exclusivemaximum)         | Exclusive maximum value. Can't be used with `maximum`                                                                                                                                                 | Takes an `integer`. Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
+| [`multipleOf`](#multipleof)                     | The yaml-value must be a multiple of. For example: If you set this to 10, allowed values would be 0, 10, 20, 30...                                                                                    | Takes an `integer` |
+| [`additionalProperties`](#additionalproperties) | Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`, which will be filled with keys that the `jsonschema` can't know                                         | Defaults to `false` if the map is not an empty map. Takes a schema or boolean value |
+| [`patternProperties`](#patternproperties)       | Contains a map which maps schemas to pattern. If properties match the patterns, the given schema is applied                                                                                           | Takes an `object` |
+| [`keyAsPatternProperty`](#keyAsPatternProperty) | Accepts a regex pattern and gives all matched keys on the same level as the yaml-key its configured schema                                                                                            | Takes an `string`
+| [`anyOf`](#anyof)                               | Accepts an array of schemas. None or one must apply                                                                                                                                                   | Takes an `array` |
+| [`oneOf`](#oneof)                               | Accepts an array of schemas. One or more must apply                                                                                                                                                   | Takes an `array` |
+| [`allOf`](#allof)                               | Accepts an array of schemas. All must apply                                                                                                                                                           | Takes an `array` |
+| [`not`](#not)                                   | A schema that must not be matched.                                                                                                                                                                    | Takes an `object` |
+| [`if/then/else`](#ifthenelse)                   | `if` the given schema applies, `then` also apply the given schema or `else` the other schema                                                                                                          | Takes an `object` |
+| [`$ref`](#ref)                                  | Accepts an URI to a valid `jsonschema`. Extend the schema for the current key                                                                                                                         | Takes an URI (or relative file) |
+| [`minLength`](#minlength)                       | Minimum string length.                                                                                                                                                                                | Takes an `integer`. Must be smaller or equal than `maxLength` (if used) |
+| [`maxLength`](#maxlength)                       | Maximum string length.                                                                                                                                                                                | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
+| [`minItems`](#minItems)                         | Minimum length of an array.                                                                                                                                                                           | Takes an `integer`. Must be smaller or equal than `maxItems` (if used) |
+| [`maxItems`](#maxItems)                         | Maximum length of an array.                                                                                                                                                                           | Takes an `integer`. Must be greater or equal than `minItems` (if used) |
+
 
 ## Validation & completion
 
@@ -655,6 +657,31 @@ env:
   API_PROVIDER_TWO: api-key-xxxxx
   EMAIL_ADMIN: admin@example.org
   EMAIL_DEFAULT_USER: user@example.org
+```
+
+#### `keyAsPatternProperty`
+
+Has the same basis as [`patternProperties`](#patternProperties) but takes the given schema as the pattern to match.
+
+**It's important to note That unlike patternProperties, keyAsPatternProperty matches keys on the same level
+and not the values under the yaml-key**
+
+Useful if you have tpls that match based on a certain regex. It's recommended to use a key that is unlikely to be 
+matched such as a single underscore.
+
+```yaml
+# @schema
+# type: object
+# keyAsPatternProperty: .*_deployment
+# properties:
+#   secret:
+#     type: string
+#     description: path to secret
+#   config:
+#     type: string
+#     description: path to config
+# @schema
+_: 
 ```
 
 #### `anyOf`
