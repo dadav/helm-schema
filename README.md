@@ -127,19 +127,12 @@ You can apply schema annotations to the root schema object itself using `# @sche
 # description: Configuration values for my Helm chart
 # x-custom-field: custom-value
 # @schema.root
-# First key description
-foo: bar
+# @schema
+# enum: [dev, staging, prod]
+# @schema
+# Example description foo baz
+stage: dev
 ```
-
-This will apply the `title`, `description`, and custom annotations to the root schema object, while the comment after the `@schema.root` block applies to the `foo` key.
-
-Root-level annotations support all the same properties as regular annotations, including:
-- `title` and `description`
-- `additionalProperties`
-- Custom annotations (prefixed with `x-`)
-- `deprecated`, `readOnly`, `writeOnly`
-- `examples`
-- And more
 
 > [!NOTE]
 > The `@schema.root` block must be placed before the first key in your `values.yaml` file, without blank lines after it (unless you use the `-s` flag to keep full comments).
@@ -260,6 +253,7 @@ This is useful when you have umbrella charts with multiple dependencies and want
 ### Handling Circular Dependencies
 
 In some scenarios, you may have charts that reference each other to share values, creating circular dependencies. For example:
+
 - A cert-manager chart depends on a grafana chart to get the instance name for creating dashboards
 - The grafana chart depends on the cert-manager chart to get the ACME issuer value
 
@@ -346,27 +340,23 @@ cpu: 1
 
 #### Root schema annotations
 
-Apply schema annotations to the root document itself.
+Apply schema annotations to the root document itself. This is especially useful for setting the `additionalProperties` on the root level of the schema.
 
 ```yaml
 # @schema.root
-# title: My Application Configuration
-# description: Complete configuration for deploying my application
 # additionalProperties: true
-# x-version: "1.0"
 # @schema.root
 # Main application settings
 app:
-  name: myapp
-  replicas: 3
-
-# Database configuration  
-database:
-  host: localhost
-  port: 5432
+  # @schema
+  # type: string
+  # @schema
+  name: my-app
+  # @schema
+  # type: boolean
+  # @schema
+  enabled: true
 ```
-
-This generates a schema where the root object has the specified title, description, and custom annotations, while each key maintains its own annotations.
 
 #### `title`
 
