@@ -215,12 +215,59 @@ loop:
 				}
 
 				if dep.Name != "" {
+					// Determine the property name to use (alias or name)
+					propName := dep.Name
+					if dep.Alias != "" {
+						propName = dep.Alias
+					}
+
+					// Check if the property already exists with custom schema annotations
+					// HasData indicates that the property has custom schema data from annotations (like $ref)
+					if existingProp, exists := result.Schema.Properties[propName]; exists && existingProp.HasData {
+						log.Debugf("Property %s in chart %s has custom schema annotations, skipping dependency schema merge", propName, result.Chart.Name)
+						continue
+					}
+
 					if dependencyResult, ok := chartNameToResult[dep.Name]; ok {
 						log.Debugf(
 							"Found chart of dependency %s (%s)",
 							dependencyResult.Chart.Name,
 							dependencyResult.ChartPath,
 						)
+
+						// Merge $defs from dependency into parent chart's root-level $defs
+						if dependencyResult.Schema.Defs != nil && len(dependencyResult.Schema.Defs) > 0 {
+							if result.Schema.Defs == nil {
+								result.Schema.Defs = make(map[string]*schema.Schema)
+							}
+							for defName, defSchema := range dependencyResult.Schema.Defs {
+								// Check for conflicts and warn if a definition already exists
+								if existingDef, exists := result.Schema.Defs[defName]; exists {
+									log.Warnf("Definition %s from dependency %s conflicts with existing definition in parent chart %s, keeping parent's definition", defName, dep.Name, result.Chart.Name)
+									_ = existingDef // avoid unused variable warning
+								} else {
+									log.Debugf("Merging $defs entry %s from dependency %s into parent chart %s", defName, dep.Name, result.Chart.Name)
+									result.Schema.Defs[defName] = defSchema
+								}
+							}
+						}
+
+						// Also merge definitions (JSON Schema Draft-04/06/07 style)
+						if dependencyResult.Schema.Definitions != nil && len(dependencyResult.Schema.Definitions) > 0 {
+							if result.Schema.Definitions == nil {
+								result.Schema.Definitions = make(map[string]*schema.Schema)
+							}
+							for defName, defSchema := range dependencyResult.Schema.Definitions {
+								// Check for conflicts and warn if a definition already exists
+								if existingDef, exists := result.Schema.Definitions[defName]; exists {
+									log.Warnf("Definition %s from dependency %s conflicts with existing definition in parent chart %s, keeping parent's definition", defName, dep.Name, result.Chart.Name)
+									_ = existingDef // avoid unused variable warning
+								} else {
+									log.Debugf("Merging definitions entry %s from dependency %s into parent chart %s", defName, dep.Name, result.Chart.Name)
+									result.Schema.Definitions[defName] = defSchema
+								}
+							}
+						}
 
 						// Check if this is a library chart
 						if dependencyResult.Chart.Type == "library" {
@@ -240,12 +287,19 @@ loop:
 							}
 						} else {
 							// For non-library charts, nest under dependency name
-							depSchema := schema.Schema{
-								Type:        []string{"object"},
-								Title:       dep.Name,
-								Description: dependencyResult.Chart.Description,
-								Properties:  dependencyResult.Schema.Properties,
+							// Copy the entire dependency schema, not just properties
+							depSchema := dependencyResult.Schema
+
+							// Override top-level fields for nesting
+							depSchema.Title = dep.Name
+							if dependencyResult.Chart.Description != "" {
+								depSchema.Description = dependencyResult.Chart.Description
 							}
+							// Ensure type is object for nesting
+							if len(depSchema.Type) == 0 {
+								depSchema.Type = []string{"object"}
+							}
+
 							depSchema.DisableRequiredProperties()
 
 							if dep.Alias != "" {
