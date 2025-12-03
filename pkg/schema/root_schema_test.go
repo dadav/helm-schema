@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -229,5 +230,279 @@ service:
 	}
 	if envSchema.Description != "Environment setting" {
 		t.Errorf("Expected environment Description=%q, got %q", "Environment setting", envSchema.Description)
+	}
+}
+
+func TestDefinitionsPropagationFromExternalSchema(t *testing.T) {
+	tests := []struct {
+		name                string
+		yamlContent         string
+		externalSchemaFile  string
+		externalSchemaJSON  string
+		expectedDefsCount   int
+		expectedDefName     string
+		useDefinitionsKeywd bool // true = "definitions", false = "$defs"
+	}{
+		{
+			name: "propagate $defs from external schema",
+			yamlContent: `# @schema
+# $ref: ./external.json#/$defs/baseService
+# @schema
+service:
+  port: 8080`,
+			externalSchemaFile: "external.json",
+			externalSchemaJSON: `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$defs": {
+    "baseService": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"}
+      }
+    },
+    "anotherDef": {
+      "type": "string"
+    }
+  }
+}`,
+			expectedDefsCount:   2,
+			expectedDefName:     "baseService",
+			useDefinitionsKeywd: false,
+		},
+		{
+			name: "propagate definitions from external schema",
+			yamlContent: `# @schema
+# $ref: ./legacy.json#/definitions/legacyService
+# @schema
+service:
+  port: 8080`,
+			externalSchemaFile: "legacy.json",
+			externalSchemaJSON: `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "legacyService": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"}
+      }
+    },
+    "legacyType": {
+      "type": "string"
+    }
+  }
+}`,
+			expectedDefsCount:   2,
+			expectedDefName:     "legacyService",
+			useDefinitionsKeywd: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temporary directory and external schema file
+			tmpDir := t.TempDir()
+			externalSchemaPath := tmpDir + "/" + tt.externalSchemaFile
+			err := os.WriteFile(externalSchemaPath, []byte(tt.externalSchemaJSON), 0644)
+			if err != nil {
+				t.Fatalf("Failed to create external schema file: %v", err)
+			}
+
+			// Create temporary values file in the same directory
+			valuesPath := tmpDir + "/values.yaml"
+			err = os.WriteFile(valuesPath, []byte(tt.yamlContent), 0644)
+			if err != nil {
+				t.Fatalf("Failed to create values file: %v", err)
+			}
+
+			var node yaml.Node
+			err = yaml.Unmarshal([]byte(tt.yamlContent), &node)
+			if err != nil {
+				t.Fatalf("Failed to unmarshal YAML: %v", err)
+			}
+
+			skipConfig := &SkipAutoGenerationConfig{}
+			schema := YamlToSchema(valuesPath, &node, false, false, false, true, skipConfig, nil, nil)
+
+			// Check if definitions were propagated
+			if tt.useDefinitionsKeywd {
+				if schema.Definitions == nil {
+					t.Errorf("Expected Definitions to be set, got nil")
+				} else if len(schema.Definitions) != tt.expectedDefsCount {
+					t.Errorf("Expected %d definitions, got %d", tt.expectedDefsCount, len(schema.Definitions))
+				} else if _, exists := schema.Definitions[tt.expectedDefName]; !exists {
+					t.Errorf("Expected definition %q to exist in Definitions", tt.expectedDefName)
+				}
+			} else {
+				if schema.Defs == nil {
+					t.Errorf("Expected $defs to be set, got nil")
+				} else if len(schema.Defs) != tt.expectedDefsCount {
+					t.Errorf("Expected %d $defs, got %d", tt.expectedDefsCount, len(schema.Defs))
+				} else if _, exists := schema.Defs[tt.expectedDefName]; !exists {
+					t.Errorf("Expected definition %q to exist in $defs", tt.expectedDefName)
+				}
+			}
+		})
+	}
+}
+
+func TestCheckUsesDefinitions(t *testing.T) {
+	tests := []struct {
+		name     string
+		schema   *Schema
+		expected bool
+	}{
+		{
+			name: "schema with #/definitions/ ref",
+			schema: &Schema{
+				Ref: "#/definitions/myType",
+			},
+			expected: true,
+		},
+		{
+			name: "schema with #/$defs/ ref",
+			schema: &Schema{
+				Ref: "#/$defs/myType",
+			},
+			expected: false,
+		},
+		{
+			name: "schema with nested definitions ref in properties",
+			schema: &Schema{
+				Properties: map[string]*Schema{
+					"foo": {
+						Ref: "#/definitions/fooType",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "schema with definitions ref in allOf",
+			schema: &Schema{
+				AllOf: []*Schema{
+					{
+						Ref: "#/definitions/baseType",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "schema with definitions ref in items",
+			schema: &Schema{
+				Items: &Schema{
+					Ref: "#/definitions/itemType",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "schema without any refs",
+			schema: &Schema{
+				Type: []string{"object"},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkUsesDefinitions(tt.schema)
+			if result != tt.expected {
+				t.Errorf("Expected checkUsesDefinitions=%v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestRootSchemaAnnotationsPropagation(t *testing.T) {
+	tests := []struct {
+		name        string
+		yamlContent string
+		checkField  string
+		checkValue  interface{}
+	}{
+		{
+			name: "root schema with Ref propagation",
+			yamlContent: `# @schema.root
+# $ref: "#/$defs/commonConfig"
+# @schema.root
+foo: bar`,
+			checkField: "Ref",
+			checkValue: "#/$defs/commonConfig",
+		},
+		{
+			name: "root schema with Examples propagation",
+			yamlContent: `# @schema.root
+# examples:
+#   - name: example1
+# @schema.root
+foo: bar`,
+			checkField: "Examples",
+			checkValue: 1, // count of examples
+		},
+		{
+			name: "root schema with Deprecated propagation",
+			yamlContent: `# @schema.root
+# deprecated: true
+# @schema.root
+foo: bar`,
+			checkField: "Deprecated",
+			checkValue: true,
+		},
+		{
+			name: "root schema with ReadOnly propagation",
+			yamlContent: `# @schema.root
+# readOnly: true
+# @schema.root
+foo: bar`,
+			checkField: "ReadOnly",
+			checkValue: true,
+		},
+		{
+			name: "root schema with WriteOnly propagation",
+			yamlContent: `# @schema.root
+# writeOnly: true
+# @schema.root
+foo: bar`,
+			checkField: "WriteOnly",
+			checkValue: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var node yaml.Node
+			err := yaml.Unmarshal([]byte(tt.yamlContent), &node)
+			if err != nil {
+				t.Fatalf("Failed to unmarshal YAML: %v", err)
+			}
+
+			skipConfig := &SkipAutoGenerationConfig{}
+			schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
+
+			switch tt.checkField {
+			case "Ref":
+				if schema.Ref != tt.checkValue.(string) {
+					t.Errorf("Expected Ref=%q, got %q", tt.checkValue.(string), schema.Ref)
+				}
+			case "Examples":
+				if len(schema.Examples) != tt.checkValue.(int) {
+					t.Errorf("Expected %d examples, got %d", tt.checkValue.(int), len(schema.Examples))
+				}
+			case "Deprecated":
+				if schema.Deprecated != tt.checkValue.(bool) {
+					t.Errorf("Expected Deprecated=%v, got %v", tt.checkValue.(bool), schema.Deprecated)
+				}
+			case "ReadOnly":
+				if schema.ReadOnly != tt.checkValue.(bool) {
+					t.Errorf("Expected ReadOnly=%v, got %v", tt.checkValue.(bool), schema.ReadOnly)
+				}
+			case "WriteOnly":
+				if schema.WriteOnly != tt.checkValue.(bool) {
+					t.Errorf("Expected WriteOnly=%v, got %v", tt.checkValue.(bool), schema.WriteOnly)
+				}
+			}
+		})
 	}
 }

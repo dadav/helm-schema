@@ -957,6 +957,21 @@ func YamlToSchema(
 		if len(contentSchema.CustomAnnotations) > 0 {
 			schema.CustomAnnotations = contentSchema.CustomAnnotations
 		}
+		if contentSchema.Ref != "" {
+			schema.Ref = contentSchema.Ref
+		}
+		if len(contentSchema.Examples) > 0 {
+			schema.Examples = contentSchema.Examples
+		}
+		if contentSchema.Deprecated {
+			schema.Deprecated = contentSchema.Deprecated
+		}
+		if contentSchema.ReadOnly {
+			schema.ReadOnly = contentSchema.ReadOnly
+		}
+		if contentSchema.WriteOnly {
+			schema.WriteOnly = contentSchema.WriteOnly
+		}
 
 		// Merge collected definitions into the root schema
 		if len(collectedDefsMap) > 0 {
