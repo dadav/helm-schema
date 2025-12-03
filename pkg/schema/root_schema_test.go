@@ -9,13 +9,13 @@ import (
 
 func TestGetRootSchemaFromComment(t *testing.T) {
 	tests := []struct {
-		name                 string
-		comment              string
-		expectedHasData      bool
-		expectedTitle        string
-		expectedDescription  string
-		expectedRemaining    string
-		expectError          bool
+		name                string
+		comment             string
+		expectedHasData     bool
+		expectedTitle       string
+		expectedDescription string
+		expectedRemaining   string
+		expectError         bool
 	}{
 		{
 			name: "simple root schema",
@@ -50,7 +50,7 @@ key: value`,
 # type: string
 # @schema
 # Just a regular comment`,
-			expectedHasData:   false,
+			expectedHasData: false,
 			expectedRemaining: `# @schema
 # type: string
 # @schema
@@ -68,23 +68,23 @@ key: value`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			schema, remaining, err := GetRootSchemaFromComment(tt.comment)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected an error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 				return
 			}
-			
+
 			if schema.HasData != tt.expectedHasData {
 				t.Errorf("Expected HasData=%v, got %v", tt.expectedHasData, schema.HasData)
 			}
-			
+
 			if tt.expectedHasData {
 				if schema.Title != tt.expectedTitle {
 					t.Errorf("Expected Title=%q, got %q", tt.expectedTitle, schema.Title)
@@ -93,7 +93,7 @@ key: value`,
 					t.Errorf("Expected Description=%q, got %q", tt.expectedDescription, schema.Description)
 				}
 			}
-			
+
 			if strings.TrimSpace(remaining) != strings.TrimSpace(tt.expectedRemaining) {
 				t.Errorf("Expected remaining=%q, got %q", tt.expectedRemaining, remaining)
 			}
@@ -103,12 +103,12 @@ key: value`,
 
 func TestYamlToSchemaWithRootAnnotations(t *testing.T) {
 	tests := []struct {
-		name                  string
-		yamlContent           string
-		expectedTitle         string
-		expectedDescription   string
+		name                   string
+		yamlContent            string
+		expectedTitle          string
+		expectedDescription    string
 		expectedAdditionalProp interface{}
-		expectedCustomField   interface{}
+		expectedCustomField    interface{}
 	}{
 		{
 			name: "basic root schema",
@@ -152,7 +152,7 @@ app: myapp`,
 			}
 
 			skipConfig := &SkipAutoGenerationConfig{}
-			schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil)
+			schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
 
 			if schema.Title != tt.expectedTitle {
 				t.Errorf("Expected Title=%q, got %q", tt.expectedTitle, schema.Title)
@@ -204,7 +204,7 @@ service:
 	}
 
 	skipConfig := &SkipAutoGenerationConfig{}
-	schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil)
+	schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
 
 	// Check root schema
 	if schema.Title != "Root Title" {
@@ -218,12 +218,12 @@ service:
 	if schema.Properties == nil {
 		t.Fatal("Expected Properties to be set")
 	}
-	
+
 	envSchema, ok := schema.Properties["environment"]
 	if !ok {
 		t.Fatal("Expected environment property to exist")
 	}
-	
+
 	if len(envSchema.Enum) != 2 {
 		t.Errorf("Expected 2 enum values, got %d", len(envSchema.Enum))
 	}

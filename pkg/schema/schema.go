@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dadav/go-jsonpointer"
 	"github.com/dadav/helm-schema/pkg/util"
 	"github.com/norwoodj/helm-docs/pkg/helm"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -32,6 +31,13 @@ const (
 	// See: https://json-schema.org/blog/posts/custom-annotations-will-continue
 	CustomAnnotationPrefix = "x-"
 )
+
+// CollectedDefs tracks definitions collected from external schemas
+// and which keyword they should use (definitions vs $defs)
+type CollectedDefs struct {
+	Definitions map[string]*Schema
+	Defs        map[string]*Schema
+}
 
 // YAML tag constants used for type inference
 const (
@@ -245,6 +251,7 @@ type Schema struct {
 	PatternProperties    map[string]*Schema     `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
 	Properties           map[string]*Schema     `yaml:"properties,omitempty"           json:"properties,omitempty"`
 	Defs                 map[string]*Schema     `yaml:"$defs,omitempty"                json:"$defs,omitempty"`
+	Definitions          map[string]*Schema     `yaml:"definitions,omitempty"          json:"definitions,omitempty"`
 	If                   *Schema                `yaml:"if,omitempty"                   json:"if,omitempty"`
 	Minimum              *int                   `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
 	MultipleOf           *int                   `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
@@ -829,6 +836,50 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 	return result, strings.Join(description, "\n"), nil
 }
 
+// checkUsesDefinitions recursively checks if a schema contains any $ref to #/definitions/
+func checkUsesDefinitions(s *Schema) bool {
+	if s == nil {
+		return false
+	}
+
+	// Check direct $ref
+	if strings.Contains(s.Ref, "#/definitions/") {
+		return true
+	}
+
+	// Check properties
+	for _, prop := range s.Properties {
+		if checkUsesDefinitions(prop) {
+			return true
+		}
+	}
+
+	// Check composition schemas
+	for _, sub := range s.AllOf {
+		if checkUsesDefinitions(sub) {
+			return true
+		}
+	}
+	for _, sub := range s.AnyOf {
+		if checkUsesDefinitions(sub) {
+			return true
+		}
+	}
+	for _, sub := range s.OneOf {
+		if checkUsesDefinitions(sub) {
+			return true
+		}
+	}
+	if checkUsesDefinitions(s.Not) {
+		return true
+	}
+	if checkUsesDefinitions(s.Items) {
+		return true
+	}
+
+	return false
+}
+
 // YamlToSchema recursively parses a YAML node and creates a JSON Schema from it
 // Parameters:
 //   - valuesPath: path to the values file being processed
@@ -861,10 +912,10 @@ func YamlToSchema(
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
 
-		// Create a map to collect $defs from referenced schemas
+		// Create a map to collect definitions from referenced schemas
 		collectedDefsMap := make(map[string]*Schema)
 
-		schema.Properties = YamlToSchema(
+		contentSchema := YamlToSchema(
 			valuesPath,
 			node.Content[0],
 			keepFullComment,
@@ -874,11 +925,80 @@ func YamlToSchema(
 			skipAutoGeneration,
 			&schema.Required.Strings,
 			&collectedDefsMap,
-		).Properties
+		)
 
-		// Merge collected $defs into the root schema
+		// Copy properties from the content schema
+		schema.Properties = contentSchema.Properties
+
+		// Merge root-level schema annotations (allOf, anyOf, oneOf, etc.)
+		if len(contentSchema.AllOf) > 0 {
+			schema.AllOf = contentSchema.AllOf
+		}
+		if len(contentSchema.AnyOf) > 0 {
+			schema.AnyOf = contentSchema.AnyOf
+		}
+		if len(contentSchema.OneOf) > 0 {
+			schema.OneOf = contentSchema.OneOf
+		}
+		if contentSchema.Not != nil {
+			schema.Not = contentSchema.Not
+		}
+
+		// Copy root schema annotations from contentSchema
+		if contentSchema.Title != "" {
+			schema.Title = contentSchema.Title
+		}
+		if contentSchema.Description != "" {
+			schema.Description = contentSchema.Description
+		}
+		if contentSchema.AdditionalProperties != nil {
+			schema.AdditionalProperties = contentSchema.AdditionalProperties
+		}
+		if len(contentSchema.CustomAnnotations) > 0 {
+			schema.CustomAnnotations = contentSchema.CustomAnnotations
+		}
+
+		// Merge collected definitions into the root schema
 		if len(collectedDefsMap) > 0 {
-			schema.Defs = collectedDefsMap
+			// Determine which keyword to use based on what the external schema files used
+			// Check if any references use #/definitions/ (vs #/$defs/)
+			usesDefinitions := checkUsesDefinitions(contentSchema)
+
+			if usesDefinitions {
+				// Use "definitions" keyword
+				if schema.Definitions == nil {
+					schema.Definitions = make(map[string]*Schema)
+				}
+				for k, v := range collectedDefsMap {
+					schema.Definitions[k] = v
+				}
+			} else {
+				// Use "$defs" keyword (default for Draft-07+)
+				if schema.Defs == nil {
+					schema.Defs = make(map[string]*Schema)
+				}
+				for k, v := range collectedDefsMap {
+					schema.Defs[k] = v
+				}
+			}
+		}
+
+		// Also copy any definitions/defs from contentSchema
+		if len(contentSchema.Definitions) > 0 {
+			if schema.Definitions == nil {
+				schema.Definitions = make(map[string]*Schema)
+			}
+			for k, v := range contentSchema.Definitions {
+				schema.Definitions[k] = v
+			}
+		}
+		if len(contentSchema.Defs) > 0 {
+			if schema.Defs == nil {
+				schema.Defs = make(map[string]*Schema)
+			}
+			for k, v := range contentSchema.Defs {
+				schema.Defs[k] = v
+			}
 		}
 
 		if _, ok := schema.Properties["global"]; !ok && !dontAddGlobal {
@@ -953,6 +1073,40 @@ func YamlToSchema(
 						schema.CustomAnnotations[k] = v
 					}
 				}
+				// Handle composition keywords (allOf, anyOf, oneOf)
+				if len(rootSchema.AllOf) > 0 {
+					schema.AllOf = rootSchema.AllOf
+					// Process $refs in allOf
+					for _, subSchema := range schema.AllOf {
+						if subSchema.Ref != "" {
+							handleSchemaRefs(subSchema, valuesPath, collectedDefs)
+						}
+					}
+				}
+				if len(rootSchema.AnyOf) > 0 {
+					schema.AnyOf = rootSchema.AnyOf
+					// Process $refs in anyOf
+					for _, subSchema := range schema.AnyOf {
+						if subSchema.Ref != "" {
+							handleSchemaRefs(subSchema, valuesPath, collectedDefs)
+						}
+					}
+				}
+				if len(rootSchema.OneOf) > 0 {
+					schema.OneOf = rootSchema.OneOf
+					// Process $refs in oneOf
+					for _, subSchema := range schema.OneOf {
+						if subSchema.Ref != "" {
+							handleSchemaRefs(subSchema, valuesPath, collectedDefs)
+						}
+					}
+				}
+				if rootSchema.Not != nil {
+					schema.Not = rootSchema.Not
+					if schema.Not.Ref != "" {
+						handleSchemaRefs(schema.Not, valuesPath, collectedDefs)
+					}
+				}
 
 				if err := rootSchema.Validate(); err != nil {
 					log.Fatalf("Error while validating root jsonschema: %v", err)
@@ -1013,8 +1167,10 @@ func YamlToSchema(
 				description = prefixRemover.ReplaceAllString(description, "")
 			}
 
-			if keyNodeSchema.Ref != "" || len(keyNodeSchema.PatternProperties) > 0 {
-				// Handle $ref in main schema and pattern properties
+			if keyNodeSchema.Ref != "" || len(keyNodeSchema.PatternProperties) > 0 ||
+				len(keyNodeSchema.AllOf) > 0 || len(keyNodeSchema.AnyOf) > 0 ||
+				len(keyNodeSchema.OneOf) > 0 {
+				// Handle $ref in main schema, pattern properties, and composition keywords
 				handleSchemaRefs(&keyNodeSchema, valuesPath, collectedDefs)
 			}
 
@@ -1234,69 +1390,48 @@ func handleSchemaRefs(schema *Schema, valuesPath string, collectedDefs *map[stri
 				defer file.Close()
 				byteValue, _ := io.ReadAll(file)
 
-				if len(refParts) > 1 {
-					// Found json-pointer
-					var obj interface{}
-					json.Unmarshal(byteValue, &obj)
-
-					// First, extract the $defs from the root document if they exist
-					if collectedDefs != nil {
-						var fullSchema Schema
-						err = json.Unmarshal(byteValue, &fullSchema)
-						if err == nil && fullSchema.Defs != nil {
-							if *collectedDefs == nil {
-								*collectedDefs = make(map[string]*Schema)
-							}
-							for defName, defSchema := range fullSchema.Defs {
-								// Check for conflicts and warn if a definition is being overwritten
-								if existingDef, exists := (*collectedDefs)[defName]; exists {
-									log.Warnf("Definition %s is being overwritten during schema merge", defName)
-									_ = existingDef // avoid unused variable warning
-								}
-								(*collectedDefs)[defName] = defSchema
-							}
-						}
-					}
-
-					// Then extract the specific schema using the JSON pointer
-					jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
-					if err != nil {
-						log.Fatal(err)
-					}
-					jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
-					if err != nil {
-						log.Fatal(err)
-					}
-					err = json.Unmarshal(jsonPointerResultMarshaled, &relSchema)
-					if err != nil {
-						log.Fatal(err)
-					}
-				} else {
-					// No json-pointer
-					err = json.Unmarshal(byteValue, &relSchema)
-					if err != nil {
-						log.Fatal(err)
-					}
-
-					// Collect $defs from the referenced schema if collectedDefs is provided
-					if collectedDefs != nil && relSchema.Defs != nil {
+				// Extract $defs or definitions from the referenced schema file
+				if collectedDefs != nil {
+					var fullSchema Schema
+					err = json.Unmarshal(byteValue, &fullSchema)
+					if err == nil {
 						if *collectedDefs == nil {
 							*collectedDefs = make(map[string]*Schema)
 						}
-						for defName, defSchema := range relSchema.Defs {
-							// Check for conflicts and warn if a definition is being overwritten
+						// Collect from $defs (Draft-07+)
+						for defName, defSchema := range fullSchema.Defs {
 							if existingDef, exists := (*collectedDefs)[defName]; exists {
 								log.Warnf("Definition %s is being overwritten during schema merge", defName)
 								_ = existingDef // avoid unused variable warning
 							}
 							(*collectedDefs)[defName] = defSchema
 						}
-						// Remove $defs from the schema being merged, as they'll be at root level
-						relSchema.Defs = nil
+						// Also collect from definitions (Draft-04/06/07)
+						for defName, defSchema := range fullSchema.Definitions {
+							if existingDef, exists := (*collectedDefs)[defName]; exists {
+								log.Warnf("Definition %s is being overwritten during schema merge", defName)
+								_ = existingDef // avoid unused variable warning
+							}
+							(*collectedDefs)[defName] = defSchema
+						}
 					}
 				}
 
-				*schema = relSchema
+				// Convert external file reference to internal reference
+				// e.g., "service-schemas.json#/definitions/baseService" -> "#/definitions/baseService"
+				// or "service-schemas.json#/$defs/baseService" -> "#/$defs/baseService"
+				if len(refParts) > 1 {
+					schema.Ref = "#" + refParts[1]
+					log.Debugf("Converted external $ref to internal: %s", schema.Ref)
+				} else {
+					// No json-pointer - this shouldn't happen for $defs references
+					// but handle it by inlining the schema
+					err = json.Unmarshal(byteValue, &relSchema)
+					if err != nil {
+						log.Fatal(err)
+					}
+					*schema = relSchema
+				}
 				schema.HasData = true
 			} else {
 				log.Fatal(err)
@@ -1314,5 +1449,31 @@ func handleSchemaRefs(schema *Schema, valuesPath string, collectedDefs *map[stri
 				schema.PatternProperties[pattern] = subSchema // Update the original schema in the map
 			}
 		}
+	}
+
+	// Handle $ref in composition keywords (allOf, anyOf, oneOf)
+	if len(schema.AllOf) > 0 {
+		for _, subSchema := range schema.AllOf {
+			if subSchema.Ref != "" {
+				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
+			}
+		}
+	}
+	if len(schema.AnyOf) > 0 {
+		for _, subSchema := range schema.AnyOf {
+			if subSchema.Ref != "" {
+				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
+			}
+		}
+	}
+	if len(schema.OneOf) > 0 {
+		for _, subSchema := range schema.OneOf {
+			if subSchema.Ref != "" {
+				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
+			}
+		}
+	}
+	if schema.Not != nil && schema.Not.Ref != "" {
+		handleSchemaRefs(schema.Not, valuesPath, collectedDefs)
 	}
 }
