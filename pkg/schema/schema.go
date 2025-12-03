@@ -244,6 +244,7 @@ type Schema struct {
 	Then                 *Schema                `yaml:"then,omitempty"                 json:"then,omitempty"`
 	PatternProperties    map[string]*Schema     `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
 	Properties           map[string]*Schema     `yaml:"properties,omitempty"           json:"properties,omitempty"`
+	Defs                 map[string]*Schema     `yaml:"$defs,omitempty"                json:"$defs,omitempty"`
 	If                   *Schema                `yaml:"if,omitempty"                   json:"if,omitempty"`
 	Minimum              *int                   `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
 	MultipleOf           *int                   `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
@@ -835,8 +836,10 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 //   - keepFullComment: whether to preserve all comment text
 //   - helmDocsCompatibilityMode: whether to parse helm-docs annotations
 //   - dontRemoveHelmDocsPrefix: whether to keep helm-docs prefixes in comments
+//   - dontAddGlobal: whether to skip adding the global property
 //   - skipAutoGeneration: configuration for which fields should not be auto-generated
 //   - parentRequiredProperties: list of required properties to populate in parent
+//   - collectedDefs: map to collect $defs from referenced schemas (only used at document level)
 func YamlToSchema(
 	valuesPath string,
 	node *yaml.Node,
@@ -846,6 +849,7 @@ func YamlToSchema(
 	dontAddGlobal bool,
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
+	collectedDefs *map[string]*Schema,
 ) *Schema {
 	schema := NewSchema("object")
 
@@ -857,7 +861,10 @@ func YamlToSchema(
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
 
-		childSchema := YamlToSchema(
+		// Create a map to collect $defs from referenced schemas
+		collectedDefsMap := make(map[string]*Schema)
+
+		schema.Properties = YamlToSchema(
 			valuesPath,
 			node.Content[0],
 			keepFullComment,
@@ -866,42 +873,12 @@ func YamlToSchema(
 			dontAddGlobal,
 			skipAutoGeneration,
 			&schema.Required.Strings,
-		)
-		
-		schema.Properties = childSchema.Properties
-		
-		// Apply root schema properties from child if they were set
-		if childSchema.Title != "" {
-			schema.Title = childSchema.Title
-		}
-		if childSchema.Description != "" {
-			schema.Description = childSchema.Description
-		}
-		if childSchema.Ref != "" {
-			schema.Ref = childSchema.Ref
-		}
-		if len(childSchema.Examples) > 0 {
-			schema.Examples = childSchema.Examples
-		}
-		if childSchema.Deprecated {
-			schema.Deprecated = childSchema.Deprecated
-		}
-		if childSchema.ReadOnly {
-			schema.ReadOnly = childSchema.ReadOnly
-		}
-		if childSchema.WriteOnly {
-			schema.WriteOnly = childSchema.WriteOnly
-		}
-		if childSchema.AdditionalProperties != nil {
-			schema.AdditionalProperties = childSchema.AdditionalProperties
-		}
-		if len(childSchema.CustomAnnotations) > 0 {
-			if schema.CustomAnnotations == nil {
-				schema.CustomAnnotations = make(map[string]interface{})
-			}
-			for k, v := range childSchema.CustomAnnotations {
-				schema.CustomAnnotations[k] = v
-			}
+			&collectedDefsMap,
+		).Properties
+
+		// Merge collected $defs into the root schema
+		if len(collectedDefsMap) > 0 {
+			schema.Defs = collectedDefsMap
 		}
 
 		if _, ok := schema.Properties["global"]; !ok && !dontAddGlobal {
@@ -928,19 +905,19 @@ func YamlToSchema(
 		// Check if the first key has root schema annotations (only for root-level mappings)
 		if len(node.Content) > 0 && parentRequiredProperties != nil {
 			firstKeyNode := node.Content[0]
-			
+
 			comment := firstKeyNode.HeadComment
 			if !keepFullComment {
 				leadingCommentsRemover := regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
 				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
 			}
-			
+
 			// Try to extract root schema annotations
 			rootSchema, remainingComment, err := GetRootSchemaFromComment(comment)
 			if err != nil {
 				log.Fatalf("Error while parsing root schema comment: %v", err)
 			}
-			
+
 			if rootSchema.HasData {
 				// Apply root schema annotations to the schema being built
 				if rootSchema.Title != "" {
@@ -950,7 +927,7 @@ func YamlToSchema(
 					schema.Description = rootSchema.Description
 				}
 				if rootSchema.Ref != "" {
-					handleSchemaRefs(&rootSchema, valuesPath)
+					handleSchemaRefs(&rootSchema, valuesPath, collectedDefs)
 					schema.Ref = rootSchema.Ref
 				}
 				if len(rootSchema.Examples) > 0 {
@@ -976,16 +953,16 @@ func YamlToSchema(
 						schema.CustomAnnotations[k] = v
 					}
 				}
-				
+
 				if err := rootSchema.Validate(); err != nil {
 					log.Fatalf("Error while validating root jsonschema: %v", err)
 				}
-				
+
 				// Update the first key's comment to exclude the root schema annotations
 				firstKeyNode.HeadComment = remainingComment
 			}
 		}
-		
+
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
@@ -1038,7 +1015,7 @@ func YamlToSchema(
 
 			if keyNodeSchema.Ref != "" || len(keyNodeSchema.PatternProperties) > 0 {
 				// Handle $ref in main schema and pattern properties
-				handleSchemaRefs(&keyNodeSchema, valuesPath)
+				handleSchemaRefs(&keyNodeSchema, valuesPath, collectedDefs)
 			}
 
 			if keyNodeSchema.HasData {
@@ -1103,6 +1080,7 @@ func YamlToSchema(
 						dontAddGlobal,
 						skipAutoGeneration,
 						&keyNodeSchema.Required.Strings,
+						collectedDefs,
 					).Properties
 
 					// Process each property
@@ -1141,7 +1119,7 @@ func YamlToSchema(
 							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
-							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties)
+							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties, collectedDefs)
 
 							itemSchema.Required.Strings = append(itemSchema.Required.Strings, itemRequiredProperties...)
 
@@ -1236,14 +1214,16 @@ func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
 // - If it's a relative file path, it attempts to load and parse the referenced schema
 // - If it includes a JSON pointer (#/path/to/schema), it extracts the specific schema section
 // - The resolved schema replaces the original reference
+// - Any $defs from the referenced schema are collected in the collectedDefs map for later merging
 //
 // Parameters:
 //   - schema: Pointer to the Schema object containing the references to resolve
 //   - valuesPath: Path to the current values file, used for resolving relative paths
+//   - collectedDefs: Map to collect $defs from referenced schemas (can be nil if not needed)
 //
 // The function will log.Fatal on any critical errors (file not found, invalid JSON, etc.)
 // and log.Debug for non-critical issues (e.g., non-relative paths that may be handled elsewhere)
-func handleSchemaRefs(schema *Schema, valuesPath string) {
+func handleSchemaRefs(schema *Schema, valuesPath string, collectedDefs *map[string]*Schema) {
 	// Handle main schema $ref
 	if schema.Ref != "" {
 		refParts := strings.Split(schema.Ref, "#")
@@ -1258,6 +1238,27 @@ func handleSchemaRefs(schema *Schema, valuesPath string) {
 					// Found json-pointer
 					var obj interface{}
 					json.Unmarshal(byteValue, &obj)
+
+					// First, extract the $defs from the root document if they exist
+					if collectedDefs != nil {
+						var fullSchema Schema
+						err = json.Unmarshal(byteValue, &fullSchema)
+						if err == nil && fullSchema.Defs != nil {
+							if *collectedDefs == nil {
+								*collectedDefs = make(map[string]*Schema)
+							}
+							for defName, defSchema := range fullSchema.Defs {
+								// Check for conflicts and warn if a definition is being overwritten
+								if existingDef, exists := (*collectedDefs)[defName]; exists {
+									log.Warnf("Definition %s is being overwritten during schema merge", defName)
+									_ = existingDef // avoid unused variable warning
+								}
+								(*collectedDefs)[defName] = defSchema
+							}
+						}
+					}
+
+					// Then extract the specific schema using the JSON pointer
 					jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
 					if err != nil {
 						log.Fatal(err)
@@ -1276,7 +1277,25 @@ func handleSchemaRefs(schema *Schema, valuesPath string) {
 					if err != nil {
 						log.Fatal(err)
 					}
+
+					// Collect $defs from the referenced schema if collectedDefs is provided
+					if collectedDefs != nil && relSchema.Defs != nil {
+						if *collectedDefs == nil {
+							*collectedDefs = make(map[string]*Schema)
+						}
+						for defName, defSchema := range relSchema.Defs {
+							// Check for conflicts and warn if a definition is being overwritten
+							if existingDef, exists := (*collectedDefs)[defName]; exists {
+								log.Warnf("Definition %s is being overwritten during schema merge", defName)
+								_ = existingDef // avoid unused variable warning
+							}
+							(*collectedDefs)[defName] = defSchema
+						}
+						// Remove $defs from the schema being merged, as they'll be at root level
+						relSchema.Defs = nil
+					}
 				}
+
 				*schema = relSchema
 				schema.HasData = true
 			} else {
@@ -1291,7 +1310,7 @@ func handleSchemaRefs(schema *Schema, valuesPath string) {
 	if schema.PatternProperties != nil {
 		for pattern, subSchema := range schema.PatternProperties {
 			if subSchema.Ref != "" {
-				handleSchemaRefs(subSchema, valuesPath)
+				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
 				schema.PatternProperties[pattern] = subSchema // Update the original schema in the map
 			}
 		}
