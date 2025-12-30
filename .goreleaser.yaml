@@ -18,8 +18,8 @@ builds:
       - arm
       - arm64
     goarm:
-      - '6'
-      - '7'
+      - "6"
+      - "7"
     goos:
       - linux
       - windows
@@ -43,15 +43,41 @@ checksum:
   name_template: checksums.txt
 
 snapshot:
-  version_template: '{{ .Tag }}-next'
+  version_template: "{{ .Tag }}-next"
+
+docker_manifests:
+  - name_template: "ghcr.io/dadav/helm-schema:{{ .Tag }}"
+    image_templates:
+      - ghcr.io/dadav/helm-schema:{{ .Tag }}-amd64
+      - ghcr.io/dadav/helm-schema:{{ .Tag }}-arm64
+  - name_template: "ghcr.io/dadav/helm-schema:latest"
+    image_templates:
+      - ghcr.io/dadav/helm-schema:{{ .Tag }}-amd64
+      - ghcr.io/dadav/helm-schema:{{ .Tag }}-arm64
 
 dockers:
   - goos: linux
     goarch: amd64
+    use: buildx
     image_templates:
-      - ghcr.io/dadav/helm-schema:{{ .Tag }}
-      - ghcr.io/dadav/helm-schema:latest
+      - ghcr.io/dadav/helm-schema:{{ .Tag }}-amd64
     build_flag_templates:
+      - --pull
+      - --platform=linux/amd64
+      - --label=org.opencontainers.image.created={{.Date}}
+      - --label=org.opencontainers.image.authors=dadav
+      - --label=org.opencontainers.image.url=https://github.com/dadav/helm-schema
+      - --label=org.opencontainers.image.title={{.ProjectName}}
+      - --label=org.opencontainers.image.revision={{.FullCommit}}
+      - --label=org.opencontainers.image.version={{.Version}}
+  - goos: linux
+    goarch: arm64
+    use: buildx
+    image_templates:
+      - ghcr.io/dadav/helm-schema:{{ .Tag }}-arm64
+    build_flag_templates:
+      - --pull
+      - --platform=linux/arm64
       - --label=org.opencontainers.image.created={{.Date}}
       - --label=org.opencontainers.image.authors=dadav
       - --label=org.opencontainers.image.url=https://github.com/dadav/helm-schema
@@ -63,5 +89,5 @@ changelog:
   sort: asc
   filters:
     include:
-      - '^feat:'
-      - '^fix:'
+      - "^feat:"
+      - "^fix:"
