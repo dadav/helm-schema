@@ -87,6 +87,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	wg := sync.WaitGroup{}
 	go func() {
 		wg.Wait()
+		close(resultsChan)
 		done <- struct{}{}
 	}()
 
@@ -115,15 +116,36 @@ func exec(cmd *cobra.Command, _ []string) error {
 loop:
 	for {
 		select {
-		case err := <-errs:
-			log.Error(err)
-		case res := <-resultsChan:
-			results = append(results, &res)
+		case err, ok := <-errs:
+			if ok {
+				log.Error(err)
+			}
+		case res, ok := <-resultsChan:
+			if ok {
+				results = append(results, &res)
+			}
 		case <-done:
 			break loop
 
 		}
 	}
+
+	// Drain any remaining errors and results
+	for {
+		select {
+		case err, ok := <-errs:
+			if ok {
+				log.Error(err)
+			}
+		case res, ok := <-resultsChan:
+			if ok {
+				results = append(results, &res)
+			}
+		default:
+			goto drained
+		}
+	}
+drained:
 
 	if !noDeps {
 		results, err = schema.TopoSort(results, allowCircularDeps)
@@ -175,6 +197,11 @@ loop:
 			for _, err := range result.Errors {
 				log.Error(err)
 			}
+			continue
+		}
+
+		if result.Chart == nil {
+			log.Warnf("Skipping result with nil Chart at path: %s", result.ChartPath)
 			continue
 		}
 

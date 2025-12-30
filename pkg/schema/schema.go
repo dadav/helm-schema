@@ -165,7 +165,7 @@ func (s *StringOrArrayOfString) Validate() error {
 			t != "array" &&
 			t != "null" &&
 			t != "boolean" {
-			return fmt.Errorf("unsupported type %s", s)
+			return fmt.Errorf("unsupported type %s", t)
 		}
 	}
 	return nil
@@ -1252,12 +1252,19 @@ func handleSchemaRefs(schema *Schema, valuesPath string) {
 			file, err := os.Open(relFilePath)
 			if err == nil {
 				defer file.Close()
-				byteValue, _ := io.ReadAll(file)
+				byteValue, err := io.ReadAll(file)
+				if err != nil {
+					log.Errorf("Failed to read file %s: %v", relFilePath, err)
+					return
+				}
 
 				if len(refParts) > 1 {
 					// Found json-pointer
 					var obj interface{}
-					json.Unmarshal(byteValue, &obj)
+					if err := json.Unmarshal(byteValue, &obj); err != nil {
+						log.Errorf("Failed to unmarshal JSON from %s: %v", relFilePath, err)
+						return
+					}
 					jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
 					if err != nil {
 						log.Fatal(err)

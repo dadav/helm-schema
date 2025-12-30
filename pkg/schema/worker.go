@@ -40,6 +40,7 @@ func Worker(
 		}
 
 		chart, err := chart.ReadChart(file)
+		file.Close()
 		if err != nil {
 			result.Errors = append(result.Errors, err)
 			results <- result
@@ -79,6 +80,7 @@ func Worker(
 			continue
 		}
 		content, err := util.ReadFileAndFixNewline(valuesFile)
+		valuesFile.Close()
 		if err != nil {
 			result.Errors = append(result.Errors, err)
 			results <- result
