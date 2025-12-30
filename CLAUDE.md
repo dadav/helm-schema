@@ -112,6 +112,41 @@ go mod tidy
 - **Integration tests**: `tests/run.sh` compares generated schemas against expected outputs
 - **Test files**: `tests/test_*.yaml` are input values files, `tests/test_*_expected.schema.json` are expected outputs
 
+## Plugin Verification (Helm v4)
+
+The project implements Helm v4 plugin verification through GPG signing:
+
+### Signing Infrastructure
+
+1. **sign-plugin.sh**: Script that creates `.prov` (provenance) files for plugin tarballs
+   - Takes version, tarball path, and GPG key as arguments
+   - Creates a signed provenance file containing metadata and SHA256 hash
+   - Uses GPG to sign the provenance
+
+2. **GitHub Actions Workflow**: `.github/workflows/release.yml`
+   - Imports GPG private key from secrets (`GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`)
+   - Runs goreleaser to build and package binaries
+   - Signs all `.tar.gz` files with `sign-plugin.sh`
+   - Uploads `.prov` files to GitHub releases
+
+3. **GoReleaser Config**: `.goreleaser.yaml`
+   - Archives include plugin files: `plugin.yaml`, `install-binary.sh`, `README.md`, `LICENSE`
+   - Configured to sign checksums with GPG
+
+### Setup for Maintainers
+
+- See `.github/SETUP_SIGNING.md` for initial GPG key setup
+- Public key should be in `signing-key.asc` (currently a template)
+- Key details must be updated in `VERIFICATION.md`
+
+### Verification Process
+
+Users can verify plugins with:
+```bash
+helm plugin install <tarball> --verify
+helm plugin verify schema
+```
+
 ## Common Gotchas
 
 1. **Draft 7 limitation**: The tool uses JSON Schema Draft 7 because Helm's validation library only supports that version.
@@ -123,3 +158,5 @@ go mod tidy
 4. **Library chart merging**: When a library chart property name conflicts with a parent property, the parent takes precedence (with a warning logged).
 
 5. **Comment parsing**: By default, descriptions are cut at the first empty line in comments. Use `-s` to keep full comments.
+
+6. **Plugin signing**: Signing only works if GPG secrets are configured in GitHub. Missing secrets cause signing steps to be skipped gracefully.

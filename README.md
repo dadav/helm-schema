@@ -48,6 +48,41 @@ As `helm plugin`:
 helm plugin install https://github.com/dadav/helm-schema
 ```
 
+### Plugin Verification (Helm v4+)
+
+Helm v4 introduced plugin verification for enhanced security. All helm-schema releases are signed with GPG and include provenance files (`.prov`) for verification.
+
+**Automatic Verification (Recommended)**
+
+Helm v4 verifies plugin signatures by default:
+
+```sh
+# Install from a specific release with automatic verification
+helm plugin install https://github.com/dadav/helm-schema/releases/download/v0.18.1/helm-schema_0.18.1_Linux_x86_64.tar.gz
+```
+
+**Manual Verification**
+
+Before installing, import the signing key:
+
+```sh
+# Import the public signing key
+gpg --keyserver keyserver.ubuntu.com --recv-keys [KEY_ID]
+
+# Install with explicit verification
+helm plugin install https://github.com/dadav/helm-schema/releases/download/v0.18.1/helm-schema_0.18.1_Linux_x86_64.tar.gz --verify
+```
+
+**Verify Installed Plugin**
+
+```sh
+# Verify an already installed plugin
+helm plugin verify schema
+```
+
+> [!NOTE]
+> Plugin verification requires Helm v4 or later. If using Helm v3, signatures will be ignored.
+
 ## Usage
 
 ### Pre-commit hook

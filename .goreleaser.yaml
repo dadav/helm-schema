@@ -38,9 +38,31 @@ archives:
     format_overrides:
       - goos: windows
         formats: zip
+    # Include plugin files for Helm plugin installation
+    files:
+      - plugin.yaml
+      - install-binary.sh
+      - README.md
+      - LICENSE
 
 checksum:
   name_template: checksums.txt
+
+# Sign artifacts for Helm v4 plugin verification
+# Note: Actual .prov file creation happens in GitHub Actions workflow
+# after goreleaser completes, using sign-plugin.sh script
+signs:
+  - cmd: gpg
+    args:
+      - --batch
+      - --local-user
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - --output
+      - "${signature}"
+      - --detach-sign
+      - "${artifact}"
+    signature: "${artifact}.sig"
+    artifacts: checksum
 
 snapshot:
   version_template: "{{ .Tag }}-next"

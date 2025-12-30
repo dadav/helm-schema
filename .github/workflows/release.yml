@@ -26,6 +26,13 @@ jobs:
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6
         with:
           go-version: ^1.21
+      - name: Import GPG key for plugin signing
+        id: import_gpg
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
       - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
         with:
           registry: ghcr.io
@@ -37,5 +44,39 @@ jobs:
           distribution: goreleaser
           version: latest
           args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+      - name: Sign plugin tarballs for Helm v4 verification
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        env:
+          GPG_SIGNING_KEY: ${{ steps.import_gpg.outputs.fingerprint }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "Signing plugin tarballs with GPG for Helm v4 verification..."
+          chmod +x sign-plugin.sh
+
+          # Get version from tag
+          VERSION="${GITHUB_REF#refs/tags/}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix if present
+
+          # Sign all tar.gz files (plugin packages)
+          for tarball in dist/*.tar.gz; do
+            if [ -f "$tarball" ]; then
+              echo "Signing: $tarball"
+              ./sign-plugin.sh "$VERSION" "$tarball" "$GPG_SIGNING_KEY" || {
+                echo "Warning: Failed to sign $tarball"
+              }
+            fi
+          done
+
+          # List created .prov files
+          echo "Created provenance files:"
+          ls -lh dist/*.prov || echo "No .prov files created"
+      - name: Upload provenance files to release
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.prov
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
