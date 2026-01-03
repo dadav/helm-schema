@@ -46,7 +46,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint || '' }}
       - name: Sign plugin tarballs for Helm v4 verification
         if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
         env:

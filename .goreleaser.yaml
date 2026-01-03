@@ -49,18 +49,20 @@ checksum:
   name_template: checksums.txt
 
 # Sign artifacts for Helm v4 plugin verification
-# Note: Actual .prov file creation happens in GitHub Actions workflow
+# The actual .prov file creation happens in GitHub Actions workflow
 # after goreleaser completes, using sign-plugin.sh script
+# Checksum signing is optional and only happens when GPG_FINGERPRINT is set
 signs:
-  - cmd: gpg
+  - cmd: sh
     args:
-      - --batch
-      - --local-user
-      - "{{ .Env.GPG_FINGERPRINT }}"
-      - --output
-      - "${signature}"
-      - --detach-sign
-      - "${artifact}"
+      - -c
+      - |
+        if [ -n "${GPG_FINGERPRINT}" ]; then
+          gpg --batch --local-user "${GPG_FINGERPRINT}" --output "${signature}" --detach-sign "${artifact}"
+        else
+          echo "Skipping signing: GPG_FINGERPRINT not set"
+          touch "${signature}"
+        fi
     signature: "${artifact}.sig"
     artifacts: checksum
 
