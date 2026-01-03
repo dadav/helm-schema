@@ -42,6 +42,8 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: helm-schema-tarball
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
       - shell: bash
         run: |-
           tar xf helm-schema_*-next_Linux_x86_64.tar.gz -C tests helm-schema
