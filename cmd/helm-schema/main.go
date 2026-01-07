@@ -322,6 +322,9 @@ drainErrors:
 			}
 		}
 
+		// Hoist all nested definitions to the root level so $ref pointers resolve correctly
+		result.Schema.HoistDefinitions()
+
 		jsonStr, err := result.Schema.ToJson()
 		if err != nil {
 			log.Error(err)

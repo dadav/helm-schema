@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -681,6 +682,128 @@ func TestDisableRequiredPropertiesWithNewFields(t *testing.T) {
 	}
 }
 
+func TestDefsToDefinitionsConversion(t *testing.T) {
+	// Test that $defs is converted to definitions when unmarshaling JSON
+	tests := []struct {
+		name         string
+		jsonInput    string
+		expectDefs   bool
+		expectedKeys []string
+	}{
+		{
+			name: "$defs is converted to definitions",
+			jsonInput: `{
+				"$defs": {
+					"MyType": {"type": "string"}
+				}
+			}`,
+			expectDefs:   true,
+			expectedKeys: []string{"MyType"},
+		},
+		{
+			name: "definitions is preserved",
+			jsonInput: `{
+				"definitions": {
+					"OtherType": {"type": "integer"}
+				}
+			}`,
+			expectDefs:   true,
+			expectedKeys: []string{"OtherType"},
+		},
+		{
+			name: "$defs and definitions are merged",
+			jsonInput: `{
+				"$defs": {
+					"FromDefs": {"type": "string"}
+				},
+				"definitions": {
+					"FromDefinitions": {"type": "integer"}
+				}
+			}`,
+			expectDefs:   true,
+			expectedKeys: []string{"FromDefs", "FromDefinitions"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var schema Schema
+			if err := json.Unmarshal([]byte(tt.jsonInput), &schema); err != nil {
+				t.Fatalf("Failed to unmarshal JSON: %v", err)
+			}
+
+			if tt.expectDefs && schema.Definitions == nil {
+				t.Error("Expected Definitions to be non-nil")
+				return
+			}
+
+			for _, key := range tt.expectedKeys {
+				if _, ok := schema.Definitions[key]; !ok {
+					t.Errorf("Expected key %q in Definitions", key)
+				}
+			}
+		})
+	}
+}
+
+func TestRefPathRewriting(t *testing.T) {
+	// Test that $ref paths are rewritten from #/$defs/ to #/definitions/
+	tests := []struct {
+		name        string
+		jsonInput   string
+		expectedRef string
+	}{
+		{
+			name: "$ref with $defs path is rewritten",
+			jsonInput: `{
+				"$ref": "#/$defs/MyType"
+			}`,
+			expectedRef: "#/definitions/MyType",
+		},
+		{
+			name: "$ref with definitions path is preserved",
+			jsonInput: `{
+				"$ref": "#/definitions/MyType"
+			}`,
+			expectedRef: "#/definitions/MyType",
+		},
+		{
+			name: "nested $ref paths are rewritten",
+			jsonInput: `{
+				"properties": {
+					"foo": {
+						"$ref": "#/$defs/FooType"
+					}
+				}
+			}`,
+			expectedRef: "#/definitions/FooType",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var schema Schema
+			if err := json.Unmarshal([]byte(tt.jsonInput), &schema); err != nil {
+				t.Fatalf("Failed to unmarshal JSON: %v", err)
+			}
+
+			// Check main ref
+			if schema.Ref != "" && schema.Ref != tt.expectedRef {
+				t.Errorf("Expected Ref to be %q, got %q", tt.expectedRef, schema.Ref)
+			}
+
+			// Check nested ref in properties
+			if schema.Properties != nil {
+				for _, prop := range schema.Properties {
+					if prop.Ref != "" && prop.Ref != tt.expectedRef {
+						t.Errorf("Expected nested Ref to be %q, got %q", tt.expectedRef, prop.Ref)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestConstNullMarshaling(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -742,5 +865,76 @@ func TestConstNullMarshaling(t *testing.T) {
 				t.Errorf("Expected JSON to NOT contain %q, but got:\n%s", tt.expectedJSON, jsonStr)
 			}
 		})
+	}
+}
+
+func TestHoistDefinitions(t *testing.T) {
+	// Create a schema with nested definitions
+	restConfig := &Schema{
+		Type:        StringOrArrayOfString{"object"},
+		Title:       "RestConfig",
+		Description: "REST API configuration",
+		Properties: map[string]*Schema{
+			"url": {
+				Type:   StringOrArrayOfString{"string"},
+				Format: "uri",
+			},
+		},
+	}
+
+	workerSchema := &Schema{
+		Type:        StringOrArrayOfString{"object"},
+		Title:       "Worker",
+		Description: "Worker configuration",
+		Definitions: map[string]*Schema{
+			"RestConfig": restConfig,
+		},
+		Properties: map[string]*Schema{
+			"api": {
+				Ref: "#/definitions/RestConfig",
+			},
+		},
+	}
+
+	rootSchema := &Schema{
+		Schema: "http://json-schema.org/draft-07/schema#",
+		Type:   StringOrArrayOfString{"object"},
+		Properties: map[string]*Schema{
+			"worker": workerSchema,
+		},
+	}
+
+	// Verify definitions are nested before hoisting
+	if rootSchema.Definitions != nil && len(rootSchema.Definitions) > 0 {
+		t.Error("Root should not have definitions before hoisting")
+	}
+	if workerSchema.Definitions == nil || len(workerSchema.Definitions) == 0 {
+		t.Error("Worker should have definitions before hoisting")
+	}
+
+	// Hoist definitions
+	rootSchema.HoistDefinitions()
+
+	// Verify definitions are at root after hoisting
+	if rootSchema.Definitions == nil || len(rootSchema.Definitions) == 0 {
+		t.Error("Root should have definitions after hoisting")
+	}
+	if _, ok := rootSchema.Definitions["RestConfig"]; !ok {
+		t.Error("Root should have RestConfig definition after hoisting")
+	}
+
+	// Verify definitions are removed from nested schema
+	if workerSchema.Definitions != nil && len(workerSchema.Definitions) > 0 {
+		t.Error("Worker should not have definitions after hoisting")
+	}
+
+	// Verify the $ref still points to the correct location
+	if rootSchema.Properties["worker"].Properties["api"].Ref != "#/definitions/RestConfig" {
+		t.Error("$ref should still point to #/definitions/RestConfig")
+	}
+
+	// Verify the hoisted definition is correct
+	if rootSchema.Definitions["RestConfig"].Title != "RestConfig" {
+		t.Errorf("Hoisted definition should have correct title, got %s", rootSchema.Definitions["RestConfig"].Title)
 	}
 }

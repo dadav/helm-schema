@@ -377,6 +377,287 @@ func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// UnmarshalJSON implements custom JSON unmarshaling for Schema objects.
+// It handles both "definitions" (Draft 7) and "$defs" (Draft 2019-09+) keywords,
+// merging them into the Definitions field for consistent Draft 7 output.
+func (s *Schema) UnmarshalJSON(data []byte) error {
+	// Create an alias type to avoid recursion
+	type schemaAlias Schema
+	alias := new(schemaAlias)
+
+	// Unmarshal known fields into alias
+	if err := json.Unmarshal(data, alias); err != nil {
+		return err
+	}
+
+	// Parse raw JSON to check for $defs
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	// Handle $defs (Draft 2019-09+) - merge into Definitions
+	if defsRaw, ok := raw["$defs"]; ok {
+		var defs map[string]*Schema
+		if err := json.Unmarshal(defsRaw, &defs); err != nil {
+			return fmt.Errorf("failed to unmarshal $defs: %w", err)
+		}
+		// Merge $defs into Definitions
+		if alias.Definitions == nil {
+			alias.Definitions = make(map[string]*Schema)
+		}
+		for k, v := range defs {
+			if _, exists := alias.Definitions[k]; !exists {
+				alias.Definitions[k] = v
+			}
+		}
+	}
+
+	// Copy alias to the main struct
+	*s = Schema(*alias)
+
+	// Rewrite $ref paths from $defs to definitions for Draft 7 compatibility
+	s.rewriteDefsRefs()
+
+	return nil
+}
+
+// HoistDefinitions collects all definitions from nested schemas and hoists them
+// to the root level. This is necessary because $ref paths like "#/definitions/X"
+// always reference the document root, not the local schema.
+func (s *Schema) HoistDefinitions() {
+	if s == nil {
+		return
+	}
+
+	// Initialize root definitions if needed
+	if s.Definitions == nil {
+		s.Definitions = make(map[string]*Schema)
+	}
+
+	// Collect definitions from all nested schemas
+	s.collectAndHoistDefinitions(s.Definitions)
+}
+
+// collectAndHoistDefinitions recursively collects definitions from nested schemas
+// and adds them to the root definitions map, then removes them from nested positions.
+func (s *Schema) collectAndHoistDefinitions(rootDefs map[string]*Schema) {
+	if s == nil {
+		return
+	}
+
+	// Process nested properties
+	for _, prop := range s.Properties {
+		prop.collectAndHoistDefinitions(rootDefs)
+		// Hoist definitions from this property
+		if prop.Definitions != nil {
+			for name, def := range prop.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			prop.Definitions = nil // Remove from nested position
+		}
+	}
+
+	// Process pattern properties
+	for _, prop := range s.PatternProperties {
+		prop.collectAndHoistDefinitions(rootDefs)
+		if prop.Definitions != nil {
+			for name, def := range prop.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			prop.Definitions = nil
+		}
+	}
+
+	// Process items
+	if s.Items != nil {
+		s.Items.collectAndHoistDefinitions(rootDefs)
+		if s.Items.Definitions != nil {
+			for name, def := range s.Items.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.Items.Definitions = nil
+		}
+	}
+
+	// Process composition schemas
+	for _, schema := range s.AllOf {
+		schema.collectAndHoistDefinitions(rootDefs)
+		if schema.Definitions != nil {
+			for name, def := range schema.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			schema.Definitions = nil
+		}
+	}
+	for _, schema := range s.AnyOf {
+		schema.collectAndHoistDefinitions(rootDefs)
+		if schema.Definitions != nil {
+			for name, def := range schema.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			schema.Definitions = nil
+		}
+	}
+	for _, schema := range s.OneOf {
+		schema.collectAndHoistDefinitions(rootDefs)
+		if schema.Definitions != nil {
+			for name, def := range schema.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			schema.Definitions = nil
+		}
+	}
+
+	// Process conditional schemas
+	if s.If != nil {
+		s.If.collectAndHoistDefinitions(rootDefs)
+		if s.If.Definitions != nil {
+			for name, def := range s.If.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.If.Definitions = nil
+		}
+	}
+	if s.Then != nil {
+		s.Then.collectAndHoistDefinitions(rootDefs)
+		if s.Then.Definitions != nil {
+			for name, def := range s.Then.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.Then.Definitions = nil
+		}
+	}
+	if s.Else != nil {
+		s.Else.collectAndHoistDefinitions(rootDefs)
+		if s.Else.Definitions != nil {
+			for name, def := range s.Else.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.Else.Definitions = nil
+		}
+	}
+	if s.Not != nil {
+		s.Not.collectAndHoistDefinitions(rootDefs)
+		if s.Not.Definitions != nil {
+			for name, def := range s.Not.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.Not.Definitions = nil
+		}
+	}
+
+	// Process AdditionalProperties when it's a schema
+	if s.AdditionalProperties != nil {
+		switch v := s.AdditionalProperties.(type) {
+		case *Schema:
+			v.collectAndHoistDefinitions(rootDefs)
+			if v.Definitions != nil {
+				for name, def := range v.Definitions {
+					if _, exists := rootDefs[name]; !exists {
+						rootDefs[name] = def
+					}
+				}
+				v.Definitions = nil
+			}
+		}
+	}
+}
+
+// rewriteDefsRefs recursively rewrites $ref paths from "#/$defs/" to "#/definitions/"
+// for JSON Schema Draft 7 compatibility.
+func (s *Schema) rewriteDefsRefs() {
+	if s == nil {
+		return
+	}
+
+	// Rewrite main $ref
+	if strings.HasPrefix(s.Ref, "#/$defs/") {
+		s.Ref = strings.Replace(s.Ref, "#/$defs/", "#/definitions/", 1)
+	}
+
+	// Recursively process all nested schemas
+	for _, prop := range s.Properties {
+		prop.rewriteDefsRefs()
+	}
+	for _, prop := range s.PatternProperties {
+		prop.rewriteDefsRefs()
+	}
+	for _, def := range s.Definitions {
+		def.rewriteDefsRefs()
+	}
+	if s.Items != nil {
+		s.Items.rewriteDefsRefs()
+	}
+	if s.Contains != nil {
+		s.Contains.rewriteDefsRefs()
+	}
+	if s.PropertyNames != nil {
+		s.PropertyNames.rewriteDefsRefs()
+	}
+	if s.If != nil {
+		s.If.rewriteDefsRefs()
+	}
+	if s.Then != nil {
+		s.Then.rewriteDefsRefs()
+	}
+	if s.Else != nil {
+		s.Else.rewriteDefsRefs()
+	}
+	if s.Not != nil {
+		s.Not.rewriteDefsRefs()
+	}
+	for _, schema := range s.AllOf {
+		schema.rewriteDefsRefs()
+	}
+	for _, schema := range s.AnyOf {
+		schema.rewriteDefsRefs()
+	}
+	for _, schema := range s.OneOf {
+		schema.rewriteDefsRefs()
+	}
+
+	// Handle AdditionalProperties and AdditionalItems when they are schemas
+	if s.AdditionalProperties != nil {
+		switch v := s.AdditionalProperties.(type) {
+		case *Schema:
+			v.rewriteDefsRefs()
+		case Schema:
+			v.rewriteDefsRefs()
+			s.AdditionalProperties = v
+		}
+	}
+	if s.AdditionalItems != nil {
+		switch v := s.AdditionalItems.(type) {
+		case *Schema:
+			v.rewriteDefsRefs()
+		case Schema:
+			v.rewriteDefsRefs()
+			s.AdditionalItems = v
+		}
+	}
+}
+
 // Set sets the HasData field to true
 func (s *Schema) Set() {
 	s.HasData = true

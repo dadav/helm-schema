@@ -213,7 +213,7 @@ stage: dev
 | [`maxProperties`](#maxProperties) | Maximum number of properties in an object | Takes an `integer` >= 0 |
 | [`propertyNames`](#propertyNames) | Schema that all property names must match | Takes a schema `object` |
 | [`dependencies`](#dependencies) | Property dependencies (presence of one property requires others) | Takes an `object` mapping property names to arrays or schemas |
-| [`definitions`](#definitions) | Reusable schema definitions for use with `$ref` | Takes an `object` mapping names to schemas |
+| [`definitions`](#definitions) | Reusable schema definitions for use with `$ref`. Also supports `$defs` from newer JSON Schema drafts (automatically converted) | Takes an `object` mapping names to schemas |
 | [`$comment`](#comment) | Comment for schema maintainers (not shown to end users) | Takes a `string` |
 | [`contentEncoding`](#contentEncoding) | Encoding for string content (e.g., base64) | Takes a `string` |
 | [`contentMediaType`](#contentMediaType) | MIME type for string content | Takes a `string` |
@@ -1024,6 +1024,9 @@ payment:
 #### `definitions`
 
 Define reusable schema fragments that can be referenced with `$ref`.
+
+> [!NOTE]
+> When referencing external JSON Schema files that use `$defs` (JSON Schema Draft 2019-09+), helm-schema automatically converts them to `definitions` and rewrites `$ref` paths from `#/$defs/` to `#/definitions/` for Draft 7 compatibility.
 
 ```yaml
 # @schema

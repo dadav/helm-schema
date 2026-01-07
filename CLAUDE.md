@@ -156,7 +156,7 @@ The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Dr
 - `type` (single type or array of types)
 - `title`, `description`
 - `default`, `examples`
-- `definitions`
+- `definitions` (also supports `$defs` from Draft 2019-09+ - automatically converted to `definitions`)
 
 ### Validation Keywords
 
@@ -210,7 +210,7 @@ Some keywords like `uniqueItems` are accepted on any type per the JSON Schema sp
 
 ## Common Gotchas
 
-1. **Draft 7 limitation**: The tool uses JSON Schema Draft 7 because Helm's validation library only supports that version.
+1. **Draft 7 limitation**: The tool uses JSON Schema Draft 7 because Helm's validation library only supports that version. When referencing external schemas that use `$defs` (Draft 2019-09+), they are automatically converted to `definitions` and `$ref` paths are rewritten from `#/$defs/` to `#/definitions/`.
 
 2. **Root annotations placement**: `@schema.root` blocks must be at the top of values.yaml with no blank lines after (unless using `-s` flag).
 
