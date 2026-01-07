@@ -147,6 +147,67 @@ helm plugin install <tarball> --verify
 helm plugin verify schema
 ```
 
+## Supported JSON Schema Draft 7 Keywords
+
+The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Draft 7 keywords:
+
+### Core Keywords
+- `$schema`, `$id`, `$ref`, `$comment`
+- `type` (single type or array of types)
+- `title`, `description`
+- `default`, `examples`
+- `definitions`
+
+### Validation Keywords
+
+#### Numeric (number, integer)
+- `minimum`, `maximum` (float64 - supports decimal values like `1.5`)
+- `exclusiveMinimum`, `exclusiveMaximum` (float64)
+- `multipleOf` (float64 - supports `0.1`, `0.01`, etc.)
+
+#### String
+- `minLength`, `maxLength`
+- `pattern` (regex pattern)
+- `format` (date-time, email, uri, ipv4, ipv6, uuid, etc.)
+- `contentEncoding`, `contentMediaType`
+
+#### Array
+- `items` (single schema or handled via anyOf for arrays)
+- `additionalItems` (boolean or schema)
+- `minItems`, `maxItems`
+- `uniqueItems`
+- `contains`
+
+#### Object
+- `properties`, `patternProperties`
+- `additionalProperties` (boolean or schema)
+- `required` (boolean or array of strings)
+- `minProperties`, `maxProperties`
+- `propertyNames`
+- `dependencies`
+
+### Composition Keywords
+- `allOf`, `anyOf`, `oneOf`, `not`
+- `if`, `then`, `else`
+
+### Annotation Keywords
+- `deprecated`, `readOnly`, `writeOnly`
+- `enum`, `const`
+
+### Custom Annotations
+- Any key prefixed with `x-` is treated as a custom annotation
+
+## Validation Behavior
+
+The schema validation (`Validate()` method) performs type-specific constraint checks:
+
+- Numeric constraints (`minimum`, `maximum`, etc.) require `type: number` or `type: integer`
+- String constraints (`minLength`, `maxLength`, `pattern`, `format`, `contentEncoding`) require `type: string`
+- Array constraints (`items`, `minItems`, `maxItems`, `contains`, `additionalItems`) require `type: array`
+- Object constraints (`minProperties`, `maxProperties`, `propertyNames`, `additionalProperties`) require `type: object`
+
+Some keywords like `uniqueItems` are accepted on any type per the JSON Schema spec (keywords are ignored if the type doesn't match).
+
 ## Common Gotchas
 
 1. **Draft 7 limitation**: The tool uses JSON Schema Draft 7 because Helm's validation library only supports that version.

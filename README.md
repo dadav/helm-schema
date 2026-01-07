@@ -190,11 +190,11 @@ stage: dev
 | [`enum`](#enum) | Multiple allowed values. Accepts an array of `string` | Takes an `array` |
 | [`const`](#const) | Single allowed value | Takes a `string`|
 | [`examples`](#examples) | Some examples you can provide for the end user | Takes an `array` |
-| [`minimum`](#minimum) | Minimum value. Can't be used with `exclusiveMinimum` | Takes an `integer`. Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
-| [`exclusiveMinimum`](#exclusiveminimum) | Exclusive minimum. Can't be used with `minimum` | Takes an `integer`. Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
-| [`maximum`](#maximum) | Maximum value. Can't be used with `exclusiveMaximum` | Takes an `integer`. Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
-| [`exclusiveMaximum`](#exclusivemaximum) | Exclusive maximum value. Can't be used with `maximum` | Takes an `integer`. Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
-| [`multipleOf`](#multipleof) | The yaml-value must be a multiple of. For example: If you set this to 10, allowed values would be 0, 10, 20, 30... | Takes an `integer` |
+| [`minimum`](#minimum) | Minimum value. Can't be used with `exclusiveMinimum` | Takes a `number` (integer or float). Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
+| [`exclusiveMinimum`](#exclusiveminimum) | Exclusive minimum. Can't be used with `minimum` | Takes a `number` (integer or float). Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
+| [`maximum`](#maximum) | Maximum value. Can't be used with `exclusiveMaximum` | Takes a `number` (integer or float). Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
+| [`exclusiveMaximum`](#exclusivemaximum) | Exclusive maximum value. Can't be used with `maximum` | Takes a `number` (integer or float). Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
+| [`multipleOf`](#multipleof) | The yaml-value must be a multiple of. For example: If you set this to 0.1, allowed values would be 0, 0.1, 0.2... | Takes a `number` (integer or float, must be > 0) |
 | [`additionalProperties`](#additionalproperties) | Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`, which will be filled with keys that the `jsonschema` can't know| Defaults to `false` if the map is not an empty map. Takes a schema or boolean value |
 | [`patternProperties`](#patternproperties) | Contains a map which maps schemas to pattern. If properties match the patterns, the given schema is applied| Takes an `object` |
 | [`anyOf`](#anyof) | Accepts an array of schemas. None or one must apply | Takes an `array` |
@@ -207,6 +207,16 @@ stage: dev
 | [`maxLength`](#maxlength) | Maximum string length. | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
 | [`minItems`](#minItems) | Minimum length of an array. | Takes an `integer`. Must be smaller or equal than `maxItems` (if used) |
 | [`maxItems`](#maxItems) | Maximum length of an array. | Takes an `integer`. Must be greater or equal than `minItems` (if used) |
+| [`contains`](#contains) | Array must contain at least one item matching this schema | Takes a schema `object` |
+| [`additionalItems`](#additionalItems) | Schema for array items beyond those defined in `items` tuple | Takes a `boolean` or schema `object` |
+| [`minProperties`](#minProperties) | Minimum number of properties in an object | Takes an `integer` >= 0 |
+| [`maxProperties`](#maxProperties) | Maximum number of properties in an object | Takes an `integer` >= 0 |
+| [`propertyNames`](#propertyNames) | Schema that all property names must match | Takes a schema `object` |
+| [`dependencies`](#dependencies) | Property dependencies (presence of one property requires others) | Takes an `object` mapping property names to arrays or schemas |
+| [`definitions`](#definitions) | Reusable schema definitions for use with `$ref` | Takes an `object` mapping names to schemas |
+| [`$comment`](#comment) | Comment for schema maintainers (not shown to end users) | Takes a `string` |
+| [`contentEncoding`](#contentEncoding) | Encoding for string content (e.g., base64) | Takes a `string` |
+| [`contentMediaType`](#contentMediaType) | MIME type for string content | Takes a `string` |
 
 ## Validation & completion
 
@@ -916,6 +926,160 @@ is the same as
 # minLength: 10
 # @schema
 namespace: foo
+```
+
+#### `contains`
+
+Specifies that an array must contain at least one item matching the given schema.
+
+```yaml
+# @schema
+# type: array
+# contains:
+#   type: string
+#   pattern: ^admin
+# @schema
+# At least one item must be a string starting with 'admin'
+users:
+  - admin-user
+  - regular-user
+```
+
+#### `additionalItems`
+
+Controls validation of array items beyond those specified in an `items` tuple.
+
+```yaml
+# @schema
+# type: array
+# additionalItems: false
+# @schema
+# No additional items allowed beyond what's defined
+fixedArray:
+  - foo
+  - bar
+```
+
+#### `minProperties`
+
+Minimum number of properties an object must have.
+
+```yaml
+# @schema
+# type: object
+# minProperties: 1
+# @schema
+# Object must have at least one property
+config: {}
+```
+
+#### `maxProperties`
+
+Maximum number of properties an object can have.
+
+```yaml
+# @schema
+# type: object
+# maxProperties: 5
+# @schema
+# Object can have at most 5 properties
+labels:
+  app: myapp
+  env: prod
+```
+
+#### `propertyNames`
+
+Schema that all property names in an object must match.
+
+```yaml
+# @schema
+# type: object
+# propertyNames:
+#   pattern: ^[a-z][a-z0-9-]*$
+# @schema
+# All property names must be lowercase with hyphens
+annotations:
+  app-name: myapp
+  version: v1
+```
+
+#### `dependencies`
+
+Define property dependencies - when one property is present, others must be too.
+
+```yaml
+# @schema
+# type: object
+# dependencies:
+#   creditCard: [billingAddress]
+#   billingAddress: [creditCard]
+# @schema
+# If creditCard is present, billingAddress must also be present
+payment:
+  creditCard: "1234-5678"
+  billingAddress: "123 Main St"
+```
+
+#### `definitions`
+
+Define reusable schema fragments that can be referenced with `$ref`.
+
+```yaml
+# @schema
+# definitions:
+#   port:
+#     type: integer
+#     minimum: 1
+#     maximum: 65535
+# properties:
+#   httpPort:
+#     $ref: "#/definitions/port"
+#   httpsPort:
+#     $ref: "#/definitions/port"
+# @schema
+service:
+  httpPort: 80
+  httpsPort: 443
+```
+
+#### `$comment`
+
+Add comments for schema maintainers that won't be shown to end users.
+
+```yaml
+# @schema
+# type: string
+# $comment: This field is deprecated and will be removed in v2.0
+# @schema
+legacyField: foo
+```
+
+#### `contentEncoding`
+
+Specify the encoding for string content, such as base64.
+
+```yaml
+# @schema
+# type: string
+# contentEncoding: base64
+# @schema
+# Value is expected to be base64 encoded
+certificate: "LS0tLS1CRUdJTi..."
+```
+
+#### `contentMediaType`
+
+Specify the MIME type for string content.
+
+```yaml
+# @schema
+# type: string
+# contentMediaType: application/json
+# contentEncoding: base64
+# @schema
+# Value is base64-encoded JSON
+configData: "eyJmb28iOiAiYmFyIn0="
 ```
 
 ## License

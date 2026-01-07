@@ -227,6 +227,460 @@ x-custom-foo: bar
 	assert.Equal(t, schema.CustomAnnotations["x-custom-foo"], "bar")
 }
 
+func TestNewDraft7Keywords(t *testing.T) {
+	tests := []struct {
+		name          string
+		comment       string
+		expectedValid bool
+	}{
+		// Float numeric constraints tests
+		{
+			name: "minimum with float value",
+			comment: `
+# @schema
+# type: number
+# minimum: 1.5
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "maximum with float value",
+			comment: `
+# @schema
+# type: number
+# maximum: 99.9
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "exclusiveMinimum with float value",
+			comment: `
+# @schema
+# type: number
+# exclusiveMinimum: 0.1
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "exclusiveMaximum with float value",
+			comment: `
+# @schema
+# type: number
+# exclusiveMaximum: 100.5
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "multipleOf with float value",
+			comment: `
+# @schema
+# type: number
+# multipleOf: 0.1
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "minimum greater than maximum should fail",
+			comment: `
+# @schema
+# type: number
+# minimum: 10.5
+# maximum: 5.5
+# @schema`,
+			expectedValid: false,
+		},
+		// $comment keyword
+		{
+			name: "$comment keyword",
+			comment: `
+# @schema
+# type: string
+# $comment: This is a schema comment for developers
+# @schema`,
+			expectedValid: true,
+		},
+		// contentEncoding and contentMediaType
+		{
+			name: "contentEncoding keyword",
+			comment: `
+# @schema
+# type: string
+# contentEncoding: base64
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "contentMediaType keyword",
+			comment: `
+# @schema
+# type: string
+# contentMediaType: application/json
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "contentEncoding with non-string type should fail",
+			comment: `
+# @schema
+# type: integer
+# contentEncoding: base64
+# @schema`,
+			expectedValid: false,
+		},
+		// contains keyword
+		{
+			name: "contains keyword with array type",
+			comment: `
+# @schema
+# type: array
+# contains:
+#   type: string
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "contains with non-array type should fail",
+			comment: `
+# @schema
+# type: object
+# contains:
+#   type: string
+# @schema`,
+			expectedValid: false,
+		},
+		// additionalItems keyword
+		{
+			name: "additionalItems as boolean",
+			comment: `
+# @schema
+# type: array
+# additionalItems: false
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "additionalItems as schema",
+			comment: `
+# @schema
+# type: array
+# additionalItems:
+#   type: string
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "additionalItems with non-array type should fail",
+			comment: `
+# @schema
+# type: object
+# additionalItems: false
+# @schema`,
+			expectedValid: false,
+		},
+		// minProperties and maxProperties
+		{
+			name: "minProperties keyword",
+			comment: `
+# @schema
+# type: object
+# minProperties: 1
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "maxProperties keyword",
+			comment: `
+# @schema
+# type: object
+# maxProperties: 10
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "minProperties greater than maxProperties should fail",
+			comment: `
+# @schema
+# type: object
+# minProperties: 10
+# maxProperties: 5
+# @schema`,
+			expectedValid: false,
+		},
+		{
+			name: "minProperties with non-object type should fail",
+			comment: `
+# @schema
+# type: string
+# minProperties: 1
+# @schema`,
+			expectedValid: false,
+		},
+		// propertyNames keyword
+		{
+			name: "propertyNames keyword",
+			comment: `
+# @schema
+# type: object
+# propertyNames:
+#   pattern: ^[a-z]+$
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "propertyNames with non-object type should fail",
+			comment: `
+# @schema
+# type: array
+# propertyNames:
+#   pattern: ^[a-z]+$
+# @schema`,
+			expectedValid: false,
+		},
+		// dependencies keyword
+		{
+			name: "dependencies with array of property names",
+			comment: `
+# @schema
+# type: object
+# dependencies:
+#   bar: ["foo"]
+# @schema`,
+			expectedValid: true,
+		},
+		{
+			name: "dependencies with schema",
+			comment: `
+# @schema
+# type: object
+# dependencies:
+#   bar:
+#     properties:
+#       foo:
+#         type: string
+# @schema`,
+			expectedValid: true,
+		},
+		// definitions keyword
+		{
+			name: "definitions keyword",
+			comment: `
+# @schema
+# definitions:
+#   address:
+#     type: object
+#     properties:
+#       street:
+#         type: string
+# @schema`,
+			expectedValid: true,
+		},
+		// Invalid pattern regex
+		{
+			name: "invalid pattern regex should fail",
+			comment: `
+# @schema
+# type: string
+# pattern: "[invalid"
+# @schema`,
+			expectedValid: false,
+		},
+		// additionalProperties type check
+		{
+			name: "additionalProperties with non-object type should fail",
+			comment: `
+# @schema
+# type: string
+# additionalProperties: false
+# @schema`,
+			expectedValid: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema, _, err := GetSchemaFromComment(tt.comment)
+			if err != nil {
+				if tt.expectedValid {
+					t.Errorf("Expected the schema to be valid, but can't even parse it: %v", err)
+				}
+				return
+			}
+			err = schema.Validate()
+			valid := err == nil
+			if valid != tt.expectedValid {
+				t.Errorf("Expected schema to be valid=%t, but got valid=%t (error: %v)", tt.expectedValid, valid, err)
+			}
+		})
+	}
+}
+
+func TestFloatNumericConstraintsMarshaling(t *testing.T) {
+	tests := []struct {
+		name         string
+		yamlData     string
+		expectedJSON string
+	}{
+		{
+			name:         "minimum with float",
+			yamlData:     "type: number\nminimum: 1.5",
+			expectedJSON: `"minimum": 1.5`,
+		},
+		{
+			name:         "maximum with float",
+			yamlData:     "type: number\nmaximum: 99.9",
+			expectedJSON: `"maximum": 99.9`,
+		},
+		{
+			name:         "multipleOf with float",
+			yamlData:     "type: number\nmultipleOf: 0.01",
+			expectedJSON: `"multipleOf": 0.01`,
+		},
+		{
+			name:         "exclusiveMinimum with float",
+			yamlData:     "type: number\nexclusiveMinimum: 0.5",
+			expectedJSON: `"exclusiveMinimum": 0.5`,
+		},
+		{
+			name:         "exclusiveMaximum with float",
+			yamlData:     "type: number\nexclusiveMaximum: 100.5",
+			expectedJSON: `"exclusiveMaximum": 100.5`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var schema Schema
+			if err := yaml.Unmarshal([]byte(tt.yamlData), &schema); err != nil {
+				t.Fatalf("Error unmarshaling YAML: %v", err)
+			}
+
+			jsonData, err := schema.ToJson()
+			if err != nil {
+				t.Fatalf("Error marshaling to JSON: %v", err)
+			}
+
+			jsonStr := string(jsonData)
+			if !strings.Contains(jsonStr, tt.expectedJSON) {
+				t.Errorf("Expected JSON to contain %q, but got:\n%s", tt.expectedJSON, jsonStr)
+			}
+		})
+	}
+}
+
+func TestNewKeywordsMarshaling(t *testing.T) {
+	tests := []struct {
+		name         string
+		yamlData     string
+		expectedJSON string
+	}{
+		{
+			name:         "$comment keyword",
+			yamlData:     "$comment: Test comment",
+			expectedJSON: `"$comment": "Test comment"`,
+		},
+		{
+			name:         "contentEncoding keyword",
+			yamlData:     "contentEncoding: base64",
+			expectedJSON: `"contentEncoding": "base64"`,
+		},
+		{
+			name:         "contentMediaType keyword",
+			yamlData:     "contentMediaType: application/json",
+			expectedJSON: `"contentMediaType": "application/json"`,
+		},
+		{
+			name:         "minProperties keyword",
+			yamlData:     "minProperties: 2",
+			expectedJSON: `"minProperties": 2`,
+		},
+		{
+			name:         "maxProperties keyword",
+			yamlData:     "maxProperties: 10",
+			expectedJSON: `"maxProperties": 10`,
+		},
+		{
+			name:         "contains keyword",
+			yamlData:     "type: array\ncontains:\n  type: string",
+			expectedJSON: `"contains"`,
+		},
+		{
+			name:         "propertyNames keyword",
+			yamlData:     "type: object\npropertyNames:\n  pattern: ^[a-z]+$",
+			expectedJSON: `"propertyNames"`,
+		},
+		{
+			name:         "additionalItems as boolean",
+			yamlData:     "type: array\nadditionalItems: false",
+			expectedJSON: `"additionalItems": false`,
+		},
+		{
+			name:         "definitions keyword",
+			yamlData:     "definitions:\n  myDef:\n    type: string",
+			expectedJSON: `"definitions"`,
+		},
+		{
+			name:         "dependencies keyword",
+			yamlData:     "dependencies:\n  bar: [\"foo\"]",
+			expectedJSON: `"dependencies"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var schema Schema
+			if err := yaml.Unmarshal([]byte(tt.yamlData), &schema); err != nil {
+				t.Fatalf("Error unmarshaling YAML: %v", err)
+			}
+
+			jsonData, err := schema.ToJson()
+			if err != nil {
+				t.Fatalf("Error marshaling to JSON: %v", err)
+			}
+
+			jsonStr := string(jsonData)
+			if !strings.Contains(jsonStr, tt.expectedJSON) {
+				t.Errorf("Expected JSON to contain %q, but got:\n%s", tt.expectedJSON, jsonStr)
+			}
+		})
+	}
+}
+
+func TestDisableRequiredPropertiesWithNewFields(t *testing.T) {
+	// Test that DisableRequiredProperties works with all new nested schema fields
+	schema := Schema{
+		Type: StringOrArrayOfString{"object"},
+		Required: BoolOrArrayOfString{
+			Strings: []string{"foo"},
+		},
+		Contains: &Schema{
+			Required: BoolOrArrayOfString{Strings: []string{"inner"}},
+		},
+		PropertyNames: &Schema{
+			Required: BoolOrArrayOfString{Strings: []string{"name"}},
+		},
+		Definitions: map[string]*Schema{
+			"myDef": {
+				Required: BoolOrArrayOfString{Strings: []string{"defProp"}},
+			},
+		},
+	}
+
+	schema.DisableRequiredProperties()
+
+	if len(schema.Required.Strings) != 0 {
+		t.Error("Expected root required to be empty")
+	}
+	if len(schema.Contains.Required.Strings) != 0 {
+		t.Error("Expected Contains required to be empty")
+	}
+	if len(schema.PropertyNames.Required.Strings) != 0 {
+		t.Error("Expected PropertyNames required to be empty")
+	}
+	if len(schema.Definitions["myDef"].Required.Strings) != 0 {
+		t.Error("Expected Definitions[myDef] required to be empty")
+	}
+}
+
 func TestConstNullMarshaling(t *testing.T) {
 	tests := []struct {
 		name          string

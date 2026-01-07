@@ -254,39 +254,49 @@ type Schema struct {
 	PatternProperties    map[string]*Schema     `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
 	Properties           map[string]*Schema     `yaml:"properties,omitempty"           json:"properties,omitempty"`
 	If                   *Schema                `yaml:"if,omitempty"                   json:"if,omitempty"`
-	Minimum              *int                   `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
-	MultipleOf           *int                   `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
-	ExclusiveMaximum     *int                   `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
+	Minimum              *float64               `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
+	MultipleOf           *float64               `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
+	ExclusiveMaximum     *float64               `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
 	Items                *Schema                `yaml:"items,omitempty"                json:"items,omitempty"`
-	ExclusiveMinimum     *int                   `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
-	Maximum              *int                   `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
+	ExclusiveMinimum     *float64               `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
+	Maximum              *float64               `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
 	Else                 *Schema                `yaml:"else,omitempty"                 json:"else,omitempty"`
 	Pattern              string                 `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
 	Const                interface{}            `yaml:"const,omitempty"                json:"const,omitempty"`
 	Ref                  string                 `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
 	Schema               string                 `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
 	Id                   string                 `yaml:"$id,omitempty"                  json:"$id,omitempty"`
+	Comment              string                 `yaml:"$comment,omitempty"             json:"$comment,omitempty"`
 	Format               string                 `yaml:"format,omitempty"               json:"format,omitempty"`
 	Description          string                 `yaml:"description,omitempty"          json:"description,omitempty"`
 	Title                string                 `yaml:"title,omitempty"                json:"title,omitempty"`
+	ContentEncoding      string                 `yaml:"contentEncoding,omitempty"      json:"contentEncoding,omitempty"`
+	ContentMediaType     string                 `yaml:"contentMediaType,omitempty"     json:"contentMediaType,omitempty"`
 	Type                 StringOrArrayOfString  `yaml:"type,omitempty"                 json:"type,omitempty"`
 	AnyOf                []*Schema              `yaml:"anyOf,omitempty"                json:"anyOf,omitempty"`
 	AllOf                []*Schema              `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
 	OneOf                []*Schema              `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
-	Not                  *Schema                `yaml:"not,omitempty"                json:"not,omitempty"`
+	Not                  *Schema                `yaml:"not,omitempty"                  json:"not,omitempty"`
 	Examples             []interface{}          `yaml:"examples,omitempty"             json:"examples,omitempty"`
 	Enum                 []interface{}          `yaml:"enum,omitempty"                 json:"enum,omitempty"`
+	Definitions          map[string]*Schema     `yaml:"definitions,omitempty"          json:"definitions,omitempty"`
 	HasData              bool                   `yaml:"-"                              json:"-"`
 	Deprecated           bool                   `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
-	ReadOnly             bool                   `yaml:"readOnly,omitempty"           json:"readOnly,omitempty"`
-	WriteOnly            bool                   `yaml:"writeOnly,omitempty"           json:"writeOnly,omitempty"`
+	ReadOnly             bool                   `yaml:"readOnly,omitempty"             json:"readOnly,omitempty"`
+	WriteOnly            bool                   `yaml:"writeOnly,omitempty"            json:"writeOnly,omitempty"`
 	Required             BoolOrArrayOfString    `yaml:"required,omitempty"             json:"required,omitempty"`
 	CustomAnnotations    map[string]interface{} `yaml:"-"                              json:",omitempty"`
-	MinLength            *int                   `yaml:"minLength,omitempty"              json:"minLength,omitempty"`
-	MaxLength            *int                   `yaml:"maxLength,omitempty"              json:"maxLength,omitempty"`
-	MinItems             *int                   `yaml:"minItems,omitempty"              json:"minItems,omitempty"`
-	MaxItems             *int                   `yaml:"maxItems,omitempty"              json:"maxItems,omitempty"`
+	MinLength            *int                   `yaml:"minLength,omitempty"            json:"minLength,omitempty"`
+	MaxLength            *int                   `yaml:"maxLength,omitempty"            json:"maxLength,omitempty"`
+	MinItems             *int                   `yaml:"minItems,omitempty"             json:"minItems,omitempty"`
+	MaxItems             *int                   `yaml:"maxItems,omitempty"             json:"maxItems,omitempty"`
 	UniqueItems          bool                   `yaml:"uniqueItems,omitempty"          json:"uniqueItems,omitempty"`
+	Contains             *Schema                `yaml:"contains,omitempty"             json:"contains,omitempty"`
+	AdditionalItems      SchemaOrBool           `yaml:"additionalItems,omitempty"      json:"additionalItems,omitempty"`
+	MinProperties        *int                   `yaml:"minProperties,omitempty"        json:"minProperties,omitempty"`
+	MaxProperties        *int                   `yaml:"maxProperties,omitempty"        json:"maxProperties,omitempty"`
+	PropertyNames        *Schema                `yaml:"propertyNames,omitempty"        json:"propertyNames,omitempty"`
+	Dependencies         map[string]interface{} `yaml:"dependencies,omitempty"         json:"dependencies,omitempty"`
 	constWasSet          bool                   `yaml:"-"                              json:"-"`
 }
 
@@ -425,6 +435,32 @@ func (s *Schema) DisableRequiredProperties() {
 			s.AdditionalProperties = v
 		}
 	}
+
+	// Handle Contains schema
+	if s.Contains != nil {
+		s.Contains.DisableRequiredProperties()
+	}
+
+	// Handle PropertyNames schema
+	if s.PropertyNames != nil {
+		s.PropertyNames.DisableRequiredProperties()
+	}
+
+	// Handle AdditionalItems when it's a Schema
+	if s.AdditionalItems != nil {
+		switch v := s.AdditionalItems.(type) {
+		case *Schema:
+			v.DisableRequiredProperties()
+		case Schema:
+			v.DisableRequiredProperties()
+			s.AdditionalItems = v
+		}
+	}
+
+	// Handle Definitions
+	for _, v := range s.Definitions {
+		v.DisableRequiredProperties()
+	}
 }
 
 // ToJson converts the data to raw json
@@ -496,6 +532,11 @@ func (s Schema) Validate() error {
 		return err
 	}
 
+	// Validate object constraints
+	if err := s.validateObjectConstraints(); err != nil {
+		return err
+	}
+
 	// Validate nested schemas
 	if err := s.validateNestedSchemas(); err != nil {
 		return err
@@ -551,6 +592,15 @@ func (s Schema) validateNumericConstraints() error {
 		return errors.New("cannot use both maximum and exclusiveMaximum")
 	}
 
+	// Validate min <= max when both are specified
+	if s.Minimum != nil && s.Maximum != nil && *s.Minimum > *s.Maximum {
+		return fmt.Errorf("minimum (%v) cannot be greater than maximum (%v)", *s.Minimum, *s.Maximum)
+	}
+
+	if s.ExclusiveMinimum != nil && s.ExclusiveMaximum != nil && *s.ExclusiveMinimum >= *s.ExclusiveMaximum {
+		return fmt.Errorf("exclusiveMinimum (%v) must be less than exclusiveMaximum (%v)", *s.ExclusiveMinimum, *s.ExclusiveMaximum)
+	}
+
 	return nil
 }
 
@@ -569,14 +619,40 @@ func (s Schema) validateStringConstraints() error {
 		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
 			return fmt.Errorf("pattern can only be used with string type, got %v", s.Type)
 		}
+		// Validate that pattern is a valid regex
+		if _, err := regexp.Compile(s.Pattern); err != nil {
+			return fmt.Errorf("invalid pattern regex: %w", err)
+		}
 	}
 
 	if s.Format != "" && s.Pattern != "" {
 		return errors.New("cannot use both format and pattern in the same schema")
 	}
 
+	// Validate minLength/maxLength are only used with string type
+	if s.MinLength != nil || s.MaxLength != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
+			return fmt.Errorf("minLength/maxLength can only be used with string type, got %v", s.Type)
+		}
+	}
+
 	if s.MaxLength != nil && s.MinLength != nil && *s.MinLength > *s.MaxLength {
 		return fmt.Errorf("minLength (%d) cannot be greater than maxLength (%d)", *s.MinLength, *s.MaxLength)
+	}
+
+	if s.MinLength != nil && *s.MinLength < 0 {
+		return errors.New("minLength must be non-negative")
+	}
+
+	if s.MaxLength != nil && *s.MaxLength < 0 {
+		return errors.New("maxLength must be non-negative")
+	}
+
+	// Validate contentEncoding and contentMediaType are only used with string type
+	if s.ContentEncoding != "" || s.ContentMediaType != "" {
+		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
+			return fmt.Errorf("contentEncoding/contentMediaType can only be used with string type, got %v", s.Type)
+		}
 	}
 
 	return nil
@@ -603,6 +679,170 @@ func (s Schema) validateArrayConstraints() error {
 		}
 	}
 
+	if s.MinItems != nil && *s.MinItems < 0 {
+		return errors.New("minItems must be non-negative")
+	}
+
+	if s.MaxItems != nil && *s.MaxItems < 0 {
+		return errors.New("maxItems must be non-negative")
+	}
+
+	// Note: uniqueItems is a boolean that doesn't require type validation.
+	// Per JSON Schema spec, keywords are ignored if the type doesn't match.
+
+	// Validate contains
+	if s.Contains != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("array") {
+			return fmt.Errorf("contains can only be used with array type, got %v", s.Type)
+		}
+		if err := s.Contains.Validate(); err != nil {
+			return fmt.Errorf("invalid contains schema: %w", err)
+		}
+	}
+
+	// Validate additionalItems
+	if s.AdditionalItems != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("array") {
+			return fmt.Errorf("additionalItems can only be used with array type, got %v", s.Type)
+		}
+		switch v := s.AdditionalItems.(type) {
+		case *Schema:
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+		case Schema:
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+		case bool:
+			// Boolean is valid
+		case map[string]interface{}:
+			// When unmarshaled from YAML, a schema object becomes map[string]interface{}
+			// Convert and validate it
+			schemaBytes, err := json.Marshal(v)
+			if err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+			var itemsSchema Schema
+			if err := json.Unmarshal(schemaBytes, &itemsSchema); err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+			if err := itemsSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+		default:
+			return fmt.Errorf("additionalItems must be a boolean or schema, got %T", s.AdditionalItems)
+		}
+	}
+
+	return nil
+}
+
+func (s Schema) validateObjectConstraints() error {
+	// Validate minProperties/maxProperties
+	if s.MinProperties != nil || s.MaxProperties != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("object") {
+			return fmt.Errorf("minProperties/maxProperties can only be used with object type, got %v", s.Type)
+		}
+
+		if s.MinProperties != nil && *s.MinProperties < 0 {
+			return errors.New("minProperties must be non-negative")
+		}
+
+		if s.MaxProperties != nil && *s.MaxProperties < 0 {
+			return errors.New("maxProperties must be non-negative")
+		}
+
+		if s.MinProperties != nil && s.MaxProperties != nil && *s.MaxProperties < *s.MinProperties {
+			return fmt.Errorf("maxProperties (%d) cannot be less than minProperties (%d)", *s.MaxProperties, *s.MinProperties)
+		}
+	}
+
+	// Validate propertyNames
+	if s.PropertyNames != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("object") {
+			return fmt.Errorf("propertyNames can only be used with object type, got %v", s.Type)
+		}
+		if err := s.PropertyNames.Validate(); err != nil {
+			return fmt.Errorf("invalid propertyNames schema: %w", err)
+		}
+	}
+
+	// Validate additionalProperties type check
+	if s.AdditionalProperties != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("object") {
+			return fmt.Errorf("additionalProperties can only be used with object type, got %v", s.Type)
+		}
+		switch v := s.AdditionalProperties.(type) {
+		case *Schema:
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+		case Schema:
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+		case bool:
+			// Boolean is valid
+		case map[string]interface{}:
+			// When unmarshaled from YAML, a schema object becomes map[string]interface{}
+			// Convert and validate it
+			schemaBytes, err := json.Marshal(v)
+			if err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+			var propsSchema Schema
+			if err := json.Unmarshal(schemaBytes, &propsSchema); err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+			if err := propsSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+		default:
+			return fmt.Errorf("additionalProperties must be a boolean or schema, got %T", s.AdditionalProperties)
+		}
+	}
+
+	// Validate patternProperties patterns
+	for pattern, patternSchema := range s.PatternProperties {
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("invalid pattern in patternProperties '%s': %w", pattern, err)
+		}
+		if patternSchema != nil {
+			if err := patternSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid schema in patternProperties[%s]: %w", pattern, err)
+			}
+		}
+	}
+
+	// Validate dependencies
+	for depKey, depValue := range s.Dependencies {
+		switch v := depValue.(type) {
+		case []interface{}:
+			// Array of property names - validate they are strings
+			for i, item := range v {
+				if _, ok := item.(string); !ok {
+					return fmt.Errorf("dependencies[%s][%d] must be a string, got %T", depKey, i, item)
+				}
+			}
+		case map[string]interface{}:
+			// Schema - convert and validate
+			schemaBytes, err := json.Marshal(v)
+			if err != nil {
+				return fmt.Errorf("invalid schema in dependencies[%s]: %w", depKey, err)
+			}
+			var depSchema Schema
+			if err := json.Unmarshal(schemaBytes, &depSchema); err != nil {
+				return fmt.Errorf("invalid schema in dependencies[%s]: %w", depKey, err)
+			}
+			if err := depSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid schema in dependencies[%s]: %w", depKey, err)
+			}
+		default:
+			return fmt.Errorf("dependencies[%s] must be an array of strings or a schema, got %T", depKey, depValue)
+		}
+	}
+
 	return nil
 }
 
@@ -621,6 +861,24 @@ func (s Schema) validateNestedSchemas() error {
 		if schema != nil {
 			if err := schema.Validate(); err != nil {
 				return err
+			}
+		}
+	}
+
+	// Validate definitions
+	for name, defSchema := range s.Definitions {
+		if defSchema != nil {
+			if err := defSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid schema in definitions[%s]: %w", name, err)
+			}
+		}
+	}
+
+	// Validate nested properties
+	for name, propSchema := range s.Properties {
+		if propSchema != nil {
+			if err := propSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid schema in properties[%s]: %w", name, err)
 			}
 		}
 	}
@@ -760,6 +1018,37 @@ func FixRequiredProperties(schema *Schema) error {
 
 	if schema.Not != nil {
 		FixRequiredProperties(schema.Not)
+	}
+
+	// Handle Contains schema
+	if schema.Contains != nil {
+		FixRequiredProperties(schema.Contains)
+	}
+
+	// Handle PropertyNames schema
+	if schema.PropertyNames != nil {
+		FixRequiredProperties(schema.PropertyNames)
+	}
+
+	// Handle AdditionalItems when it's a Schema
+	if schema.AdditionalItems != nil {
+		switch v := schema.AdditionalItems.(type) {
+		case *Schema:
+			FixRequiredProperties(v)
+		case Schema:
+			FixRequiredProperties(&v)
+			schema.AdditionalItems = v
+		}
+	}
+
+	// Handle Definitions
+	for _, defSchema := range schema.Definitions {
+		FixRequiredProperties(defSchema)
+	}
+
+	// Handle PatternProperties
+	for _, patternSchema := range schema.PatternProperties {
+		FixRequiredProperties(patternSchema)
 	}
 
 	return nil
