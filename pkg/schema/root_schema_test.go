@@ -152,7 +152,10 @@ app: myapp`,
 			}
 
 			skipConfig := &SkipAutoGenerationConfig{}
-			schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil)
+			schema, err := YamlToSchema("", &node, false, false, false, true, skipConfig, nil)
+			if err != nil {
+				t.Fatalf("YamlToSchema failed: %v", err)
+			}
 
 			if schema.Title != tt.expectedTitle {
 				t.Errorf("Expected Title=%q, got %q", tt.expectedTitle, schema.Title)
@@ -204,7 +207,10 @@ service:
 	}
 
 	skipConfig := &SkipAutoGenerationConfig{}
-	schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil)
+	schema, err := YamlToSchema("", &node, false, false, false, true, skipConfig, nil)
+	if err != nil {
+		t.Fatalf("YamlToSchema failed: %v", err)
+	}
 
 	// Check root schema
 	if schema.Title != "Root Title" {

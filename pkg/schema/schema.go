@@ -45,6 +45,13 @@ const (
 	mapTag       = "!!map"
 )
 
+// Precompiled regex patterns for better performance
+var (
+	leadingCommentsRemover = regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
+	helmDocsTagsRemover    = regexp.MustCompile(`(?ms)(\r\n|\r|\n)?\s*@\w+(\s+--\s)?[^\n\r]*`)
+	helmDocsPrefixRemover  = regexp.MustCompile(`(?m)^--\s?`)
+)
+
 // SchemaOrBool represents a JSON Schema field that can be either a boolean or a Schema object
 type SchemaOrBool interface{}
 
@@ -75,10 +82,12 @@ func (s *BoolOrArrayOfString) UnmarshalJSON(value []byte) error {
 }
 
 func (s *BoolOrArrayOfString) MarshalJSON() ([]byte, error) {
-	if s.Strings == nil {
-		return json.Marshal([]string{})
+	if len(s.Strings) > 0 {
+		return json.Marshal(s.Strings)
 	}
-	return json.Marshal(s.Strings)
+	// Return empty array - the Bool field is only used internally
+	// to signal that the property should be added to parent's required list
+	return json.Marshal([]string{})
 }
 
 func (s *BoolOrArrayOfString) UnmarshalYAML(value *yaml.Node) error {
@@ -408,9 +417,12 @@ func (s *Schema) DisableRequiredProperties() {
 
 	// Add handling for AdditionalProperties when it's a Schema
 	if s.AdditionalProperties != nil {
-		if subSchema, ok := s.AdditionalProperties.(Schema); ok {
-			subSchema.DisableRequiredProperties()
-			s.AdditionalProperties = subSchema
+		switch v := s.AdditionalProperties.(type) {
+		case *Schema:
+			v.DisableRequiredProperties()
+		case Schema:
+			v.DisableRequiredProperties()
+			s.AdditionalProperties = v
 		}
 	}
 }
@@ -719,8 +731,12 @@ func FixRequiredProperties(schema *Schema) error {
 	}
 
 	if schema.AdditionalProperties != nil {
-		if subSchema, ok := schema.AdditionalProperties.(Schema); ok {
-			FixRequiredProperties(&subSchema)
+		switch v := schema.AdditionalProperties.(type) {
+		case *Schema:
+			FixRequiredProperties(v)
+		case Schema:
+			FixRequiredProperties(&v)
+			schema.AdditionalProperties = v
 		}
 	}
 
@@ -837,6 +853,9 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 //   - dontRemoveHelmDocsPrefix: whether to keep helm-docs prefixes in comments
 //   - skipAutoGeneration: configuration for which fields should not be auto-generated
 //   - parentRequiredProperties: list of required properties to populate in parent
+//
+// Returns:
+//   - The generated Schema and any error encountered during parsing
 func YamlToSchema(
 	valuesPath string,
 	node *yaml.Node,
@@ -846,18 +865,18 @@ func YamlToSchema(
 	dontAddGlobal bool,
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
-) *Schema {
+) (*Schema, error) {
 	schema := NewSchema("object")
 
 	switch node.Kind {
 	case yaml.DocumentNode:
 		if len(node.Content) != 1 {
-			log.Fatalf("Strange yaml document found:\n%v\n", node.Content[:])
+			return nil, fmt.Errorf("unexpected yaml document structure: expected 1 content node, got %d", len(node.Content))
 		}
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
 
-		childSchema := YamlToSchema(
+		childSchema, err := YamlToSchema(
 			valuesPath,
 			node.Content[0],
 			keepFullComment,
@@ -867,6 +886,9 @@ func YamlToSchema(
 			skipAutoGeneration,
 			&schema.Required.Strings,
 		)
+		if err != nil {
+			return nil, err
+		}
 		
 		schema.Properties = childSchema.Properties
 		
@@ -931,14 +953,13 @@ func YamlToSchema(
 			
 			comment := firstKeyNode.HeadComment
 			if !keepFullComment {
-				leadingCommentsRemover := regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
 				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
 			}
 			
 			// Try to extract root schema annotations
 			rootSchema, remainingComment, err := GetRootSchemaFromComment(comment)
 			if err != nil {
-				log.Fatalf("Error while parsing root schema comment: %v", err)
+				return nil, fmt.Errorf("error parsing root schema comment: %w", err)
 			}
 			
 			if rootSchema.HasData {
@@ -950,7 +971,9 @@ func YamlToSchema(
 					schema.Description = rootSchema.Description
 				}
 				if rootSchema.Ref != "" {
-					handleSchemaRefs(&rootSchema, valuesPath)
+					if err := handleSchemaRefs(&rootSchema, valuesPath); err != nil {
+						return nil, fmt.Errorf("error resolving $ref in root schema: %w", err)
+					}
 					schema.Ref = rootSchema.Ref
 				}
 				if len(rootSchema.Examples) > 0 {
@@ -978,7 +1001,7 @@ func YamlToSchema(
 				}
 				
 				if err := rootSchema.Validate(); err != nil {
-					log.Fatalf("Error while validating root jsonschema: %v", err)
+					return nil, fmt.Errorf("error validating root schema: %w", err)
 				}
 				
 				// Update the first key's comment to exclude the root schema annotations
@@ -996,13 +1019,12 @@ func YamlToSchema(
 
 			comment := keyNode.HeadComment
 			if !keepFullComment {
-				leadingCommentsRemover := regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
 				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
 			}
 
 			keyNodeSchema, description, err := GetSchemaFromComment(comment)
 			if err != nil {
-				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
+				return nil, fmt.Errorf("error parsing comment of key %s: %w", keyNode.Value, err)
 			}
 
 			if helmDocsCompatibilityMode {
@@ -1029,30 +1051,25 @@ func YamlToSchema(
 			if !dontRemoveHelmDocsPrefix {
 				// remove all lines containing helm-docs @tags, like @ignored, or one of those:
 				// https://github.com/norwoodj/helm-docs/blob/v1.14.2/pkg/helm/chart_info.go#L18-L24
-				helmDocsTagsRemover := regexp.MustCompile(`(?ms)(\r\n|\r|\n)?\s*@\w+(\s+--\s)?[^\n\r]*`)
 				description = helmDocsTagsRemover.ReplaceAllString(description, "")
-
-				prefixRemover := regexp.MustCompile(`(?m)^--\s?`)
-				description = prefixRemover.ReplaceAllString(description, "")
+				description = helmDocsPrefixRemover.ReplaceAllString(description, "")
 			}
 
 			if keyNodeSchema.Ref != "" || len(keyNodeSchema.PatternProperties) > 0 {
 				// Handle $ref in main schema and pattern properties
-				handleSchemaRefs(&keyNodeSchema, valuesPath)
+				if err := handleSchemaRefs(&keyNodeSchema, valuesPath); err != nil {
+					return nil, fmt.Errorf("error resolving $ref for key %s: %w", keyNode.Value, err)
+				}
 			}
 
 			if keyNodeSchema.HasData {
 				if err := keyNodeSchema.Validate(); err != nil {
-					log.Fatalf(
-						"Error while validating jsonschema of key %s: %v",
-						keyNode.Value,
-						err,
-					)
+					return nil, fmt.Errorf("error validating schema of key %s: %w", keyNode.Value, err)
 				}
 			} else if !skipAutoGeneration.Type {
 				nodeType, err := typeFromTag(valueNode.Tag)
 				if err != nil {
-					log.Fatal(err)
+					return nil, fmt.Errorf("error inferring type for key %s: %w", keyNode.Value, err)
 				}
 				keyNodeSchema.Type = nodeType
 			}
@@ -1089,12 +1106,9 @@ func YamlToSchema(
 
 				// If the value is another map and no properties are set, get them from default values
 				if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
-					// Initialize properties map if needed
-					if keyNodeSchema.Properties == nil {
-						keyNodeSchema.Properties = make(map[string]*Schema)
-					}
+					keyNodeSchema.Properties = make(map[string]*Schema)
 
-					generatedProperties := YamlToSchema(
+					generatedSchema, err := YamlToSchema(
 						valuesPath,
 						valueNode,
 						keepFullComment,
@@ -1103,19 +1117,22 @@ func YamlToSchema(
 						dontAddGlobal,
 						skipAutoGeneration,
 						&keyNodeSchema.Required.Strings,
-					).Properties
+					)
+					if err != nil {
+						return nil, err
+					}
+					generatedProperties := generatedSchema.Properties
 
 					// Process each property
 					for i := 0; i < len(valueNode.Content); i += 2 {
 						propKeyNode := valueNode.Content[i]
-						// propValueNode := valueNode.Content[i+1]
 
 						// Check if this specific property matches any pattern
 						skipProperty := false
 						for pattern := range keyNodeSchema.PatternProperties {
 							matched, err := regexp.MatchString(pattern, propKeyNode.Value)
 							if err != nil {
-								log.Fatalf("Invalid pattern '%s' in patternProperties: %v", pattern, err)
+								return nil, fmt.Errorf("invalid pattern '%s' in patternProperties: %w", pattern, err)
 							}
 							if matched {
 								skipProperty = true
@@ -1125,7 +1142,9 @@ func YamlToSchema(
 
 						// Only add schema for non-skipped properties
 						if !skipProperty {
-							keyNodeSchema.Properties[propKeyNode.Value] = generatedProperties[propKeyNode.Value]
+							if prop, exists := generatedProperties[propKeyNode.Value]; exists {
+								keyNodeSchema.Properties[propKeyNode.Value] = prop
+							}
 						}
 					}
 				} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
@@ -1136,12 +1155,15 @@ func YamlToSchema(
 						if itemNode.Kind == yaml.ScalarNode {
 							itemNodeType, err := typeFromTag(itemNode.Tag)
 							if err != nil {
-								log.Fatal(err)
+								return nil, fmt.Errorf("error inferring type for array item: %w", err)
 							}
 							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
-							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties)
+							itemSchema, err := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties)
+							if err != nil {
+								return nil, err
+							}
 
 							itemSchema.Required.Strings = append(itemSchema.Required.Strings, itemRequiredProperties...)
 
@@ -1167,7 +1189,7 @@ func YamlToSchema(
 		}
 	}
 
-	return schema
+	return schema, nil
 }
 
 func helmDocsTypeToSchemaType(helmDocsType string) (string, error) {
@@ -1241,66 +1263,69 @@ func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
 //   - schema: Pointer to the Schema object containing the references to resolve
 //   - valuesPath: Path to the current values file, used for resolving relative paths
 //
-// The function will log.Fatal on any critical errors (file not found, invalid JSON, etc.)
-// and log.Debug for non-critical issues (e.g., non-relative paths that may be handled elsewhere)
-func handleSchemaRefs(schema *Schema, valuesPath string) {
+// Returns:
+//   - An error if the reference cannot be resolved, or nil on success
+func handleSchemaRefs(schema *Schema, valuesPath string) error {
 	// Handle main schema $ref
 	if schema.Ref != "" {
 		refParts := strings.Split(schema.Ref, "#")
-		if relFilePath, err := util.IsRelativeFile(valuesPath, refParts[0]); err == nil {
-			var relSchema Schema
-			file, err := os.Open(relFilePath)
-			if err == nil {
-				defer file.Close()
-				byteValue, err := io.ReadAll(file)
-				if err != nil {
-					log.Errorf("Failed to read file %s: %v", relFilePath, err)
-					return
-				}
+		relFilePath, err := util.IsRelativeFile(valuesPath, refParts[0])
+		if err != nil {
+			// Not a relative file path, may be handled elsewhere
+			log.Debug(err)
+			return nil
+		}
 
-				if len(refParts) > 1 {
-					// Found json-pointer
-					var obj interface{}
-					if err := json.Unmarshal(byteValue, &obj); err != nil {
-						log.Errorf("Failed to unmarshal JSON from %s: %v", relFilePath, err)
-						return
-					}
-					jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
-					if err != nil {
-						log.Fatal(err)
-					}
-					jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
-					if err != nil {
-						log.Fatal(err)
-					}
-					err = json.Unmarshal(jsonPointerResultMarshaled, &relSchema)
-					if err != nil {
-						log.Fatal(err)
-					}
-				} else {
-					// No json-pointer
-					err = json.Unmarshal(byteValue, &relSchema)
-					if err != nil {
-						log.Fatal(err)
-					}
-				}
-				*schema = relSchema
-				schema.HasData = true
-			} else {
-				log.Fatal(err)
+		var relSchema Schema
+		file, err := os.Open(relFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to open referenced schema file %s: %w", relFilePath, err)
+		}
+		defer file.Close()
+
+		byteValue, err := io.ReadAll(file)
+		if err != nil {
+			return fmt.Errorf("failed to read referenced schema file %s: %w", relFilePath, err)
+		}
+
+		if len(refParts) > 1 {
+			// Found json-pointer
+			var obj interface{}
+			if err := json.Unmarshal(byteValue, &obj); err != nil {
+				return fmt.Errorf("failed to unmarshal JSON from %s: %w", relFilePath, err)
+			}
+			jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
+			if err != nil {
+				return fmt.Errorf("failed to resolve JSON pointer %s in %s: %w", refParts[1], relFilePath, err)
+			}
+			jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
+			if err != nil {
+				return fmt.Errorf("failed to marshal JSON pointer result from %s: %w", relFilePath, err)
+			}
+			if err := json.Unmarshal(jsonPointerResultMarshaled, &relSchema); err != nil {
+				return fmt.Errorf("failed to unmarshal JSON pointer result from %s: %w", relFilePath, err)
 			}
 		} else {
-			log.Debug(err)
+			// No json-pointer
+			if err := json.Unmarshal(byteValue, &relSchema); err != nil {
+				return fmt.Errorf("failed to unmarshal schema from %s: %w", relFilePath, err)
+			}
 		}
+		*schema = relSchema
+		schema.HasData = true
 	}
 
 	// Handle $ref in pattern properties
 	if schema.PatternProperties != nil {
 		for pattern, subSchema := range schema.PatternProperties {
 			if subSchema.Ref != "" {
-				handleSchemaRefs(subSchema, valuesPath)
+				if err := handleSchemaRefs(subSchema, valuesPath); err != nil {
+					return fmt.Errorf("failed to resolve $ref in patternProperties[%s]: %w", pattern, err)
+				}
 				schema.PatternProperties[pattern] = subSchema // Update the original schema in the map
 			}
 		}
 	}
+
+	return nil
 }

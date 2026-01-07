@@ -85,12 +85,6 @@ func exec(cmd *cobra.Command, _ []string) error {
 	go searching.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
 
 	wg := sync.WaitGroup{}
-	go func() {
-		wg.Wait()
-		// Don't close resultsChan here - causes "send on closed channel" panic
-		// if a worker is still sending. The channel will be GC'd after main loop exits.
-		done <- struct{}{}
-	}()
 
 	for i := 0; i < workersCount; i++ {
 		wg.Add(1)
@@ -114,39 +108,42 @@ func exec(cmd *cobra.Command, _ []string) error {
 		}()
 	}
 
-loop:
-	for {
+	// Close resultsChan after all workers are done
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+		close(done)
+	}()
+
+	// Collect results and errors until both channels are closed
+	resultsChanOpen := true
+	for resultsChanOpen {
 		select {
 		case err, ok := <-errs:
 			if ok {
 				log.Error(err)
 			}
 		case res, ok := <-resultsChan:
-			if ok {
+			if !ok {
+				resultsChanOpen = false
+			} else {
 				results = append(results, &res)
 			}
-		case <-done:
-			break loop
-
 		}
 	}
 
-	// Drain any remaining errors and results
+	// Drain any remaining errors
+drainErrors:
 	for {
 		select {
 		case err, ok := <-errs:
 			if ok {
 				log.Error(err)
-			}
-		case res, ok := <-resultsChan:
-			if ok {
-				results = append(results, &res)
 			}
 		default:
-			goto drained
+			break drainErrors
 		}
 	}
-drained:
 
 	if !noDeps {
 		results, err = schema.TopoSort(results, allowCircularDeps)
@@ -215,6 +212,10 @@ drained:
 				schemaToPatch := &result.Schema
 				lastIndex := len(patch) - 1
 				for i, key := range patch {
+					// Ensure Properties map is initialized
+					if schemaToPatch.Properties == nil {
+						schemaToPatch.Properties = make(map[string]*schema.Schema)
+					}
 					if alreadyPresentSchema, ok := schemaToPatch.Properties[key]; !ok {
 						log.Debugf(
 							"Patching conditional field \"%s\" into schema of chart %s",
@@ -228,7 +229,11 @@ drained:
 								Description: "Conditional property used in parent chart",
 							}
 						} else {
-							schemaToPatch.Properties[key] = &schema.Schema{Type: []string{"object"}, Title: key}
+							schemaToPatch.Properties[key] = &schema.Schema{
+								Type:       []string{"object"},
+								Title:      key,
+								Properties: make(map[string]*schema.Schema),
+							}
 							schemaToPatch = schemaToPatch.Properties[key]
 						}
 					} else {
@@ -309,9 +314,10 @@ drained:
 
 			// Set additionalProperties to true for dependency schemas
 			for _, depName := range depNames {
-				if prop, ok := result.Schema.Properties[depName]; ok {
+				if prop, ok := result.Schema.Properties[depName]; ok && prop != nil {
 					log.Debugf("Setting additionalProperties to true for dependency %s in chart %s", depName, result.Chart.Name)
-					prop.AdditionalProperties = true
+					additionalPropsTrue := true
+					prop.AdditionalProperties = &additionalPropsTrue
 				}
 			}
 		}

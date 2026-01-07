@@ -2,7 +2,7 @@ package schema
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,7 +67,7 @@ func Worker(
 
 		if !valuesFound {
 			result.Errors = append(result.Errors, errorsWeMaybeCanIgnore...)
-			result.Errors = append(result.Errors, errors.New("no values file found"))
+			result.Errors = append(result.Errors, fmt.Errorf("no values file found (tried: %s)", strings.Join(valueFileNames, ", ")))
 			results <- result
 			continue
 		}
@@ -119,7 +119,13 @@ func Worker(
 			continue
 		}
 
-		result.Schema = *YamlToSchema(valuesPath, &values, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGenerationConfig, nil)
+		schema, err := YamlToSchema(valuesPath, &values, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGenerationConfig, nil)
+		if err != nil {
+			result.Errors = append(result.Errors, err)
+			results <- result
+			continue
+		}
+		result.Schema = *schema
 
 		results <- result
 	}
