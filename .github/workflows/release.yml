@@ -13,6 +13,8 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    env:
+      HAS_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
@@ -28,7 +30,7 @@ jobs:
           go-version: ^1.21
       - name: Import GPG key for plugin signing
         id: import_gpg
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        if: ${{ env.HAS_GPG_KEY == 'true' }}
         uses: crazy-max/ghaction-import-gpg@v6
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
@@ -48,7 +50,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint || '' }}
       - name: Sign plugin tarballs for Helm v4 verification
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        if: ${{ env.HAS_GPG_KEY == 'true' }}
         env:
           GPG_SIGNING_KEY: ${{ steps.import_gpg.outputs.fingerprint }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -74,7 +76,7 @@ jobs:
           echo "Created provenance files:"
           ls -lh dist/*.prov || echo "No .prov files created"
       - name: Upload provenance files to release
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        if: ${{ env.HAS_GPG_KEY == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.prov
