@@ -1,0 +1,5 @@
+apiVersion: v2
+name: test
+description: Test chart for helm-schema
+type: application
+version: 0.1.0

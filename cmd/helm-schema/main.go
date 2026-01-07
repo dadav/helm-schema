@@ -74,7 +74,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	queue := make(chan string)
 	resultsChan := make(chan schema.Result)
 	results := []*schema.Result{}
-	errs := make(chan error)
+	errs := make(chan error, 100) // Buffered to prevent deadlock when errors occur before goroutines start
 	done := make(chan struct{})
 
 	tempDir := searching.SearchArchivesOpenTemp(chartSearchRoot, errs)
@@ -87,7 +87,8 @@ func exec(cmd *cobra.Command, _ []string) error {
 	wg := sync.WaitGroup{}
 	go func() {
 		wg.Wait()
-		close(resultsChan)
+		// Don't close resultsChan here - causes "send on closed channel" panic
+		// if a worker is still sending. The channel will be GC'd after main loop exits.
 		done <- struct{}{}
 	}()
 
