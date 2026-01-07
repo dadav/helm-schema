@@ -71,9 +71,13 @@ fi
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
+# Save the original directory and convert tarball path to absolute
+ORIG_DIR="$(pwd)"
+TARBALL_DIR="$(cd "$(dirname "$TARBALL")" && pwd)"
+TARBALL_NAME=$(basename "$TARBALL")
+
 # Copy tarball to temp directory
 cp "$TARBALL" "$TEMP_DIR/"
-TARBALL_NAME=$(basename "$TARBALL")
 
 cd "$TEMP_DIR"
 
@@ -135,9 +139,9 @@ echo "" >> "${TARBALL_NAME}.prov"
 cat "${TARBALL_NAME}.prov.sig" >> "${TARBALL_NAME}.prov"
 
 # Copy back to original location
-cp "${TARBALL_NAME}.prov" "$(dirname "$TARBALL")/"
+cp "${TARBALL_NAME}.prov" "$TARBALL_DIR/"
 
-echo "✓ Successfully created provenance file: ${TARBALL}.prov"
+echo "✓ Successfully created provenance file: ${TARBALL_DIR}/${TARBALL_NAME}.prov"
 echo ""
 echo "To verify the signature:"
 echo "  helm plugin verify $(basename "$TARBALL")"
