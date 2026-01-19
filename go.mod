@@ -7,7 +7,7 @@ require (
 	github.com/magiconair/properties v1.8.10
 	github.com/norwoodj/helm-docs v1.14.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
