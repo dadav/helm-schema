@@ -96,9 +96,6 @@ HASH=$(sha256sum "$TARBALL_NAME" | awk '{print $1}')
 
 # Create provenance content
 cat > "${TARBALL_NAME}.prov.tmp" <<EOF
------BEGIN PGP SIGNED MESSAGE-----
-Hash: SHA256
-
 name: $PLUGIN_NAME
 version: $VERSION
 description: Generate jsonschemas for your helm charts
@@ -119,24 +116,17 @@ fi
 if [ -n "${GPG_PASSPHRASE:-}" ]; then
     # Use passphrase from environment if available
     echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 \
-        --armor \
-        --detach-sign \
+        --clearsign \
         --local-user "$GPG_KEY" \
-        --output "${TARBALL_NAME}.prov.sig" \
+        --output "${TARBALL_NAME}.prov" \
         "${TARBALL_NAME}.prov.tmp"
 else
     # Interactive passphrase prompt
-    gpg --armor \
-        --detach-sign \
+    gpg --clearsign \
         --local-user "$GPG_KEY" \
-        --output "${TARBALL_NAME}.prov.sig" \
+        --output "${TARBALL_NAME}.prov" \
         "${TARBALL_NAME}.prov.tmp"
 fi
-
-# Combine into final .prov file (clearsigned format)
-cat "${TARBALL_NAME}.prov.tmp" > "${TARBALL_NAME}.prov"
-echo "" >> "${TARBALL_NAME}.prov"
-cat "${TARBALL_NAME}.prov.sig" >> "${TARBALL_NAME}.prov"
 
 # Copy back to original location
 cp "${TARBALL_NAME}.prov" "$TARBALL_DIR/"
