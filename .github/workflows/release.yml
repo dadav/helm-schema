@@ -75,6 +75,30 @@ jobs:
           # List created .prov files
           echo "Created provenance files:"
           ls -lh dist/*.prov || echo "No .prov files created"
+      - name: Test signed plugin tarballs
+        if: ${{ env.HAS_GPG_KEY == 'true' }}
+        run: |
+          echo "Testing signed plugin tarballs with Helm..."
+
+          # Create keyring from the public key in the repo
+          KEYRING=$(mktemp)
+          gpg --dearmor < signing-key.asc > "$KEYRING"
+
+          # Test verification for each tarball/prov pair
+          for prov_file in dist/*.prov; do
+            if [ -f "$prov_file" ]; then
+              tarball="${prov_file%.prov}"
+              if [ -f "$tarball" ]; then
+                echo "Verifying: $tarball"
+                helm plugin verify "$tarball" --keyring "$KEYRING" || {
+                  echo "Warning: Verification failed for $tarball"
+                  echo "Provenance file contents:"
+                  cat "$prov_file"
+                }
+              fi
+            fi
+          done
+          rm -f "$KEYRING"
       - name: Upload provenance files to release
         if: ${{ env.HAS_GPG_KEY == 'true' }}
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
