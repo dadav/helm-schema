@@ -101,6 +101,7 @@ version: $VERSION
 description: Generate jsonschemas for your helm charts
 home: https://github.com/dadav/helm-schema
 
+...
 files:
   $TARBALL_NAME: sha256:$HASH
 EOF
