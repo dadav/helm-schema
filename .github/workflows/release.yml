@@ -75,7 +75,9 @@ jobs:
           # List created .prov files
           echo "Created provenance files:"
           ls -lh dist/*.prov || echo "No .prov files created"
-      - name: Test signed plugin tarballs
+      - name: Set up Helm v4
+        uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a # v4
+      - name: Test signed plugin tarballs with Helm v4
         if: ${{ env.HAS_GPG_KEY == 'true' }}
         run: |
           echo "Testing signed plugin tarballs with Helm..."
