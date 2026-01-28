@@ -86,21 +86,24 @@ jobs:
           KEYRING=$(mktemp)
           gpg --dearmor < signing-key.asc > "$KEYRING"
 
-          # Test verification for each tarball/prov pair
+          FAILED=0
           for prov_file in dist/*.prov; do
             if [ -f "$prov_file" ]; then
               tarball="${prov_file%.prov}"
               if [ -f "$tarball" ]; then
                 echo "Verifying: $tarball"
                 helm plugin verify "$tarball" --keyring "$KEYRING" || {
-                  echo "Warning: Verification failed for $tarball"
-                  echo "Provenance file contents:"
+                  echo "FAIL: Verification failed for $tarball"
                   cat "$prov_file"
+                  FAILED=1
                 }
               fi
             fi
           done
-          rm -f "$KEYRING"
+
+          if [ "$FAILED" -eq 1 ]; then
+            exit 1
+          fi
       - name: Upload provenance files to release
         if: ${{ env.HAS_GPG_KEY == 'true' }}
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
