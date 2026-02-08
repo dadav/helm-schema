@@ -55,6 +55,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	dontAddGlobal := viper.GetBool("dont-add-global")
 	skipDepsSchemaValidation := viper.GetBool("skip-dependencies-schema-validation")
 	allowCircularDeps := viper.GetBool("allow-circular-dependencies")
+	annotate := viper.GetBool("annotate")
 	for _, dep := range dependenciesFilter {
 		dependenciesFilterMap[dep] = true
 	}
@@ -99,6 +100,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 				helmDocsCompatibilityMode,
 				dontRemoveHelmDocsPrefix,
 				dontAddGlobal,
+				annotate,
 				valueFileNames,
 				skipConfig,
 				outFile,
@@ -143,6 +145,28 @@ drainErrors:
 		default:
 			break drainErrors
 		}
+	}
+
+	// In annotate mode, just report errors and return (no schema generation)
+	if annotate {
+		foundErrors := false
+		for _, result := range results {
+			if len(result.Errors) > 0 {
+				foundErrors = true
+				if result.Chart != nil {
+					log.Errorf("Found %d errors while annotating chart %s (%s)", len(result.Errors), result.Chart.Name, result.ChartPath)
+				} else {
+					log.Errorf("Found %d errors while annotating chart %s", len(result.Errors), result.ChartPath)
+				}
+				for _, err := range result.Errors {
+					log.Error(err)
+				}
+			}
+		}
+		if foundErrors {
+			return errors.New("some errors were found")
+		}
+		return nil
 	}
 
 	if !noDeps {

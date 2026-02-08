@@ -61,6 +61,8 @@ go mod tidy
 
 6. **Output** (`cmd/helm-schema/main.go`): Writes `values.schema.json` files to each chart directory.
 
+7. **Annotation Mode** (`pkg/schema/annotate.go`): With `--annotate` / `-A` flag, writes inferred `@schema` type annotation blocks into `values.yaml` files for keys that don't already have them. This is a separate execution mode that modifies values files instead of generating JSON schema. Keys that already have `@schema` blocks are skipped.
+
 ### Key Components
 
 #### Schema Parsing (`pkg/schema/schema.go`)

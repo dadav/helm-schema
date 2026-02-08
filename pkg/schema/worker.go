@@ -21,7 +21,7 @@ type Result struct {
 }
 
 func Worker(
-	dryRun, uncomment, addSchemaReference, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal bool,
+	dryRun, uncomment, addSchemaReference, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, annotate bool,
 	valueFileNames []string,
 	skipAutoGenerationConfig *SkipAutoGenerationConfig,
 	outFile string,
@@ -83,6 +83,15 @@ func Worker(
 		valuesFile.Close()
 		if err != nil {
 			result.Errors = append(result.Errors, err)
+			results <- result
+			continue
+		}
+
+		// Annotate mode: write @schema annotations into values.yaml and skip schema generation
+		if annotate {
+			if err := AnnotateValuesFile(valuesPath, dryRun); err != nil {
+				result.Errors = append(result.Errors, err)
+			}
 			results <- result
 			continue
 		}

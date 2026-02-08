@@ -130,6 +130,7 @@ key1: value1
 				tt.helmDocsCompatibilityMode,
 				tt.dontRemoveHelmDocsPrefix,
 				tt.dontAddGlobal,
+				false, // annotate
 				tt.valueFileNames,
 				tt.skipAutoGenerationConfig,
 				tt.outFile,
