@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build and Test Commands
 
 ### Build
+
 ```bash
 # Build the binary
 go build -o helm-schema ./cmd/helm-schema
@@ -18,6 +19,7 @@ goreleaser release --snapshot --clean
 ```
 
 ### Test
+
 ```bash
 # Run all tests
 go test ./...
@@ -37,6 +39,7 @@ cd tests && ./run.sh
 ```
 
 ### Linting and Formatting
+
 ```bash
 # Format code
 go fmt ./...
@@ -66,6 +69,7 @@ go mod tidy
 ### Key Components
 
 #### Schema Parsing (`pkg/schema/schema.go`)
+
 - **`ParseValues()`**: Main entry point that parses a values.yaml file and returns a Schema
 - **`parseYamlNode()`**: Recursively traverses YAML nodes, extracting schema annotations and inferring types
 - **Annotation blocks**: Comments between `# @schema` markers are parsed as YAML to extract JSON Schema properties
@@ -73,6 +77,7 @@ go mod tidy
 - **Type inference**: If no type is specified, the tool infers it from YAML tags (!!str, !!int, !!bool, etc.)
 
 #### Worker Pattern (`pkg/schema/worker.go`)
+
 - Workers pull chart paths from a channel and process them independently
 - Each worker:
   1. Reads Chart.yaml
@@ -81,15 +86,18 @@ go mod tidy
   4. Sends Result to results channel
 
 #### Dependency Graph (`pkg/schema/toposort.go`)
+
 - **TopoSort()**: Uses DFS-based topological sorting to ensure dependencies are processed before dependents
 - Detects circular dependencies and can either fail or warn based on `allowCircular` flag
 - Returns charts in dependency order (dependencies first, parents last)
 
 #### Chart Models (`pkg/chart/chart.go`)
+
 - **ChartFile**: Represents Chart.yaml structure
 - **Dependency**: Represents a chart dependency with name, version, alias, condition
 
 #### Schema Merging (in `main.go`)
+
 - Regular dependencies: Nested under dependency name (or alias) in parent schema
 - Library charts: Properties merged directly into parent schema at top level
 - Conditional dependencies: If a dependency has a `condition` field, the corresponding boolean property is auto-created in the dependency's schema
@@ -144,6 +152,7 @@ The project implements Helm v4 plugin verification through GPG signing:
 ### Verification Process
 
 Users can verify plugins with:
+
 ```bash
 helm plugin install <tarball> --verify
 helm plugin verify schema
@@ -154,6 +163,7 @@ helm plugin verify schema
 The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Draft 7 keywords:
 
 ### Core Keywords
+
 - `$schema`, `$id`, `$ref`, `$comment`
 - `type` (single type or array of types)
 - `title`, `description`
@@ -163,17 +173,20 @@ The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Dr
 ### Validation Keywords
 
 #### Numeric (number, integer)
+
 - `minimum`, `maximum` (float64 - supports decimal values like `1.5`)
 - `exclusiveMinimum`, `exclusiveMaximum` (float64)
 - `multipleOf` (float64 - supports `0.1`, `0.01`, etc.)
 
 #### String
+
 - `minLength`, `maxLength`
 - `pattern` (regex pattern)
 - `format` (date-time, email, uri, ipv4, ipv6, uuid, etc.)
 - `contentEncoding`, `contentMediaType`
 
 #### Array
+
 - `items` (single schema or handled via anyOf for arrays)
 - `additionalItems` (boolean or schema)
 - `minItems`, `maxItems`
@@ -181,6 +194,7 @@ The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Dr
 - `contains`
 
 #### Object
+
 - `properties`, `patternProperties`
 - `additionalProperties` (boolean or schema)
 - `required` (boolean or array of strings)
@@ -189,15 +203,23 @@ The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Dr
 - `dependencies`
 
 ### Composition Keywords
+
 - `allOf`, `anyOf`, `oneOf`, `not`
 - `if`, `then`, `else`
 
 ### Annotation Keywords
+
 - `deprecated`, `readOnly`, `writeOnly`
 - `enum`, `const`
 
 ### Custom Annotations
+
 - Any key prefixed with `x-` is treated as a custom annotation
+
+## Documentation Notes
+
+- README plugin verification examples should use a `vX.Y.Z` placeholder to avoid version drift.
+- GPG public key fingerprint (from `signing-key.asc`) is `806F 70D2 5667 D42A AE4E 07CE F587 0796 9D0F BFA5`; key ID is `F58707969D0FBFA5`.
 
 ## Validation Behavior
 

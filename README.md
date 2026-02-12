@@ -58,7 +58,7 @@ Helm v4 verifies plugin signatures by default:
 
 ```sh
 # Install from a specific release with automatic verification
-helm plugin install https://github.com/dadav/helm-schema/releases/download/v0.18.1/helm-schema_0.18.1_Linux_x86_64.tar.gz
+helm plugin install https://github.com/dadav/helm-schema/releases/download/vX.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz
 ```
 
 **Manual Verification**
@@ -66,11 +66,17 @@ helm plugin install https://github.com/dadav/helm-schema/releases/download/v0.18
 Before installing, import the signing key:
 
 ```sh
-# Import the public signing key
-gpg --keyserver keyserver.ubuntu.com --recv-keys [KEY_ID]
+# Import the public signing key (from file)
+gpg --import signing-key.asc
+
+# Or import by key ID (last 16 hex chars of the fingerprint)
+gpg --keyserver keyserver.ubuntu.com --recv-keys F58707969D0FBFA5
+
+# Verify the imported key fingerprint (expect: 806F 70D2 5667 D42A AE4E 07CE F587 0796 9D0F BFA5)
+gpg --fingerprint F58707969D0FBFA5
 
 # Install with explicit verification
-helm plugin install https://github.com/dadav/helm-schema/releases/download/v0.18.1/helm-schema_0.18.1_Linux_x86_64.tar.gz --verify
+helm plugin install https://github.com/dadav/helm-schema/releases/download/vX.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz --verify
 ```
 
 **Verify Installed Plugin**
@@ -118,13 +124,13 @@ Flags:
   -a, --append-newline                         "append newline to generated jsonschema at the end of the file"
   -c, --chart-search-root string               "directory to search recursively within for charts (default ".")"
   -i, --dependencies-filter strings            "only generate schema for specified dependencies (comma-separated list of dependency names)"
-  -g, --dont-add-global                        "dont auto add global property"
+  -g, --dont-add-global                        "don't auto add global property"
   -x, --dont-strip-helm-docs-prefix            "disable the removal of the helm-docs prefix (--)"
   -d, --dry-run                                "don't actually create files just print to stdout passed"
   -p, --helm-docs-compatibility-mode           "parse and use helm-docs comments"
   -h, --help                                   "help for helm-schema"
   -s, --keep-full-comment                      "keep the whole leading comment (default: cut at empty line)"
-  -l, --log-level string                       "level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
+  -l, --log-level string                       "level of logs that should be printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
   -n, --no-dependencies                        "don't analyze dependencies"
   -o, --output-file string                     "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
   -m, --skip-dependencies-schema-validation    "skip schema validation for dependencies by setting additionalProperties to true and removing from required"
@@ -266,7 +272,7 @@ are used if detected.
 
 ## Dependencies
 
-Per default, `helm-schema` will try to also create the schemas for the dependencies in their respective chart directory. These schemas will be merged as properties in the main schema, but the `requiredProperties` field will be nullified, otherwise you would have to always overwrite all the required fields.
+By default, `helm-schema` will try to also create the schemas for the dependencies in their respective chart directory. These schemas will be merged as properties in the main schema, but the `requiredProperties` field will be nullified, otherwise you would have to always overwrite all the required fields.
 
 If you don't want to generate `jsonschema` for chart dependencies, you can use the `-n, --no-dependencies` option to only generate the `values.schema.json` for your parent chart(s)
 

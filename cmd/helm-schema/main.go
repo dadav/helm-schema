@@ -135,7 +135,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Drain any remaining errors
-drainErrors:
+	drainErrors:
 	for {
 		select {
 		case err, ok := <-errs:
@@ -181,7 +181,7 @@ drainErrors:
 		}
 	}
 
-	conditionsToPatch := make(map[string][]string)
+	conditionsToPatch := make(map[string][][]string)
 	if !noDeps {
 		for _, result := range results {
 			if len(result.Errors) > 0 {
@@ -194,7 +194,16 @@ drainErrors:
 
 				if dep.Condition != "" {
 					conditionKeys := strings.Split(dep.Condition, ".")
-					conditionsToPatch[conditionKeys[0]] = conditionKeys[1:]
+					if len(conditionKeys) == 1 {
+						continue
+					}
+					targetName := conditionKeys[0]
+					if dep.Alias != "" && dep.Alias == conditionKeys[0] {
+						targetName = dep.Name
+					}
+					if targetName != "" {
+						conditionsToPatch[targetName] = append(conditionsToPatch[targetName], conditionKeys[1:])
+					}
 				}
 			}
 		}
@@ -232,36 +241,38 @@ drainErrors:
 			chartNameToResult[result.Chart.Name] = result
 			log.Debugf("Stored chart %s in chartNameToResult", result.Chart.Name)
 
-			if patch, ok := conditionsToPatch[result.Chart.Name]; ok {
-				schemaToPatch := &result.Schema
-				lastIndex := len(patch) - 1
-				for i, key := range patch {
-					// Ensure Properties map is initialized
-					if schemaToPatch.Properties == nil {
-						schemaToPatch.Properties = make(map[string]*schema.Schema)
-					}
-					if alreadyPresentSchema, ok := schemaToPatch.Properties[key]; !ok {
-						log.Debugf(
-							"Patching conditional field \"%s\" into schema of chart %s",
-							key,
-							result.Chart.Name,
-						)
-						if i == lastIndex {
-							schemaToPatch.Properties[key] = &schema.Schema{
-								Type:        []string{"boolean"},
-								Title:       key,
-								Description: "Conditional property used in parent chart",
+			if patches, ok := conditionsToPatch[result.Chart.Name]; ok {
+				for _, patch := range patches {
+					schemaToPatch := &result.Schema
+					lastIndex := len(patch) - 1
+					for i, key := range patch {
+						// Ensure Properties map is initialized
+						if schemaToPatch.Properties == nil {
+							schemaToPatch.Properties = make(map[string]*schema.Schema)
+						}
+						if alreadyPresentSchema, ok := schemaToPatch.Properties[key]; !ok {
+							log.Debugf(
+								"Patching conditional field \"%s\" into schema of chart %s",
+								key,
+								result.Chart.Name,
+							)
+							if i == lastIndex {
+								schemaToPatch.Properties[key] = &schema.Schema{
+									Type:        []string{"boolean"},
+									Title:       key,
+									Description: "Conditional property used in parent chart",
+								}
+							} else {
+								schemaToPatch.Properties[key] = &schema.Schema{
+									Type:       []string{"object"},
+									Title:      key,
+									Properties: make(map[string]*schema.Schema),
+								}
+								schemaToPatch = schemaToPatch.Properties[key]
 							}
 						} else {
-							schemaToPatch.Properties[key] = &schema.Schema{
-								Type:       []string{"object"},
-								Title:      key,
-								Properties: make(map[string]*schema.Schema),
-							}
-							schemaToPatch = schemaToPatch.Properties[key]
+							schemaToPatch = alreadyPresentSchema
 						}
-					} else {
-						schemaToPatch = alreadyPresentSchema
 					}
 				}
 			}
@@ -302,6 +313,9 @@ drainErrors:
 								Title:       dep.Name,
 								Description: dependencyResult.Chart.Description,
 								Properties:  dependencyResult.Schema.Properties,
+							}
+							if dep.Condition != "" && !strings.Contains(dep.Condition, ".") {
+								depSchema.Type = []string{"object", "boolean"}
 							}
 							depSchema.DisableRequiredProperties()
 

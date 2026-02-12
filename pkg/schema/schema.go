@@ -841,14 +841,6 @@ func (s Schema) validateSchemaSyntax() error {
 }
 
 func (s Schema) validateTypeConstraints() error {
-	if s.Const != nil && !s.Type.IsEmpty() {
-		return errors.New("cannot use both 'const' and 'type' in the same schema")
-	}
-
-	if s.Enum != nil && !s.Type.IsEmpty() {
-		return errors.New("cannot use both 'enum' and 'type' in the same schema")
-	}
-
 	return nil
 }
 
@@ -1249,7 +1241,11 @@ func FixRequiredProperties(schema *Schema) error {
 		}
 		if !slices.Contains(schema.Type, "object") {
 			// If .Properties is set, type must be object
-			schema.Type = []string{"object"}
+			if len(schema.Type) == 0 {
+				schema.Type = []string{"object"}
+			} else {
+				schema.Type = append(schema.Type, "object")
+			}
 		}
 	}
 

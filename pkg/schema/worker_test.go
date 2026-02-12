@@ -152,3 +152,43 @@ key1: value1
 		})
 	}
 }
+
+func TestWorker_DryRunDoesNotWriteSchemaReference(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	chartPath := filepath.Join(tmpDir, "Chart.yaml")
+	valuesPath := filepath.Join(tmpDir, "values.yaml")
+
+	err := os.WriteFile(chartPath, []byte("apiVersion: v2\nname: test-chart\nversion: 1.0.0\n"), 0o644)
+	assert.NoError(t, err)
+	err = os.WriteFile(valuesPath, []byte("key: value\n"), 0o644)
+	assert.NoError(t, err)
+
+	queue := make(chan string, 1)
+	results := make(chan Result, 1)
+	queue <- chartPath
+	close(queue)
+
+	Worker(
+		true,  // dryRun
+		false, // uncomment
+		true,  // addSchemaReference
+		false, // keepFullComment
+		false, // helmDocsCompatibilityMode
+		false, // dontRemoveHelmDocsPrefix
+		false, // dontAddGlobal
+		false, // annotate
+		[]string{"values.yaml"},
+		&SkipAutoGenerationConfig{},
+		"values.schema.json",
+		queue,
+		results,
+	)
+
+	result := <-results
+	assert.Empty(t, result.Errors)
+
+	updated, err := os.ReadFile(valuesPath)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(updated), "yaml-language-server: $schema=values.schema.json")
+}
