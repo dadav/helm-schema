@@ -1770,6 +1770,8 @@ func helmDocsTypeToSchemaType(helmDocsType string) (string, error) {
 		return "array", nil
 	case "map":
 		return "object", nil
+	case "tpl":
+		return "string", nil
 	case "string", "object":
 		return helmDocsType, nil
 	}
