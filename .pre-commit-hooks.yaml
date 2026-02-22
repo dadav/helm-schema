@@ -6,6 +6,13 @@
   language: golang
   name: Generate jsonschema
   require_serial: true
+- id: helm-schema-system
+  description: Uses pre-installed helm-schema to create a jsonschema.
+  entry: helm-schema
+  files: (Chart|values)\.yaml$
+  language: system
+  name: Generate jsonschema
+  require_serial: true
 - id: helm-schema-container
   args: []
   description: Uses the container image of 'helm-schema' to create schema from the Helm chart's 'values.yaml' file, and inserts the result into a corresponding 'values.schema.json' file.
