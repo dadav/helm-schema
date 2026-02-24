@@ -130,6 +130,7 @@ The `processImportValues()` function handles Helm's `import-values` directive:
    - Comments outside these blocks become descriptions (unless `description` is explicitly set)
 
 4. **Helm-docs compatibility**: With `-p` flag, parses `-- helm-docs description` and `@default` annotations from helm-docs format.
+   - Helm-docs type `tpl` is mapped to JSON Schema `string` in `helmDocsTypeToSchemaType`.
 
 ## Testing Strategy
 
