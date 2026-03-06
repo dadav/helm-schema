@@ -1,0 +1,9 @@
+# @schema
+# type: string
+# description: Application name
+# @schema
+appName: myapp
+
+# No @schema annotation - inferred schema should be replaced by child's explicit annotation
+extraConfig:
+  someDefault: value

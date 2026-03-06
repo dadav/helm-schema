@@ -1,0 +1,4 @@
+apiVersion: v2
+name: child
+version: 1.0.0
+description: A child chart with exports

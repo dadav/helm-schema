@@ -1,0 +1,5 @@
+# @schema
+# type: string
+# description: Application environment
+# @schema
+environment: production

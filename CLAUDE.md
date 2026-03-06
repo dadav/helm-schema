@@ -100,8 +100,23 @@ go mod tidy
 
 - Regular dependencies: Nested under dependency name (or alias) in parent schema
 - Library charts: Properties merged directly into parent schema at top level
+- Import-values: Properties from dependency's `exports` section (or custom paths) merged into parent at specified location
 - Conditional dependencies: If a dependency has a `condition` field, the corresponding boolean property is auto-created in the dependency's schema
 - Skip validation flag (`-m`): Can disable strict validation for dependencies by setting `additionalProperties: true`
+
+#### Import-Values Processing (in `main.go`)
+
+The `processImportValues()` function handles Helm's `import-values` directive:
+
+- **Simple form** (`import-values: [defaults]`): Imports from `exports.defaults` in dependency to parent's root
+- **Complex form** (`import-values: [{child: "path", parent: "path"}]`): Explicit source and target paths
+- Properties are merged using `mergeSchemaProperties()`, which skips "global" and warns on conflicts
+- When import-values is used on a non-library dependency, the dependency is NOT auto-nested (user controls what's imported)
+
+#### Schema Path Navigation (`pkg/schema/schema.go`)
+
+- **`GetPropertyAtPath(path string)`**: Navigates dot-separated paths (e.g., "exports.defaults") and returns the schema at that location, or nil if not found
+- **`SetPropertyAtPath(path string)`**: Creates intermediate object schemas as needed and returns the schema at the target path
 
 ### Important Patterns
 
@@ -242,6 +257,8 @@ Some keywords like `uniqueItems` are accepted on any type per the JSON Schema sp
 
 4. **Library chart merging**: When a library chart property name conflicts with a parent property, the parent takes precedence (with a warning logged).
 
-5. **Comment parsing**: By default, descriptions are cut at the first empty line in comments. Use `-s` to keep full comments.
+5. **Import-values behavior**: When `import-values` is used on a non-library dependency, the dependency's full schema is NOT auto-nested under its name. Only explicitly imported properties appear in the parent schema. This matches Helm's behavior where import-values gives the user explicit control over what's imported.
 
-6. **Plugin signing**: Signing only works if GPG secrets are configured in GitHub. Missing secrets cause signing steps to be skipped gracefully.
+6. **Comment parsing**: By default, descriptions are cut at the first empty line in comments. Use `-s` to keep full comments.
+
+7. **Plugin signing**: Signing only works if GPG secrets are configured in GitHub. Missing secrets cause signing steps to be skipped gracefully.

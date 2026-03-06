@@ -744,6 +744,64 @@ func (s *Schema) DisableRequiredProperties() {
 	}
 }
 
+// GetPropertyAtPath navigates a dot-separated path and returns the schema at that location.
+// Returns nil if any part of the path doesn't exist. Empty path segments are skipped.
+func (s *Schema) GetPropertyAtPath(path string) *Schema {
+	if s == nil || path == "" {
+		return s
+	}
+
+	parts := strings.Split(path, ".")
+	current := s
+
+	for _, part := range parts {
+		if part == "" {
+			continue // Skip empty segments (e.g., "foo..bar" or ".foo")
+		}
+		if current.Properties == nil {
+			return nil
+		}
+		prop, ok := current.Properties[part]
+		if !ok {
+			return nil
+		}
+		current = prop
+	}
+
+	return current
+}
+
+// SetPropertyAtPath navigates a dot-separated path and ensures all intermediate schemas exist.
+// Creates intermediate object schemas as needed. Returns the schema at the final path location.
+// If the path is empty, returns the current schema. Empty path segments are skipped.
+func (s *Schema) SetPropertyAtPath(path string) *Schema {
+	if s == nil || path == "" {
+		return s
+	}
+
+	parts := strings.Split(path, ".")
+	current := s
+
+	for _, part := range parts {
+		if part == "" {
+			continue // Skip empty segments (e.g., "foo..bar" or ".foo")
+		}
+		if current.Properties == nil {
+			current.Properties = make(map[string]*Schema)
+		}
+		if _, ok := current.Properties[part]; !ok {
+			current.Properties[part] = &Schema{
+				Type:       []string{"object"},
+				Title:      part,
+				Properties: make(map[string]*Schema),
+			}
+		}
+		current = current.Properties[part]
+	}
+
+	return current
+}
+
 // ToJson converts the data to raw json
 func (s Schema) ToJson() ([]byte, error) {
 	res, err := json.MarshalIndent(&s, "", "  ")

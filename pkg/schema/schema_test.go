@@ -868,6 +868,196 @@ func TestConstNullMarshaling(t *testing.T) {
 	}
 }
 
+func TestGetPropertyAtPath(t *testing.T) {
+	// Create a nested schema structure
+	schema := &Schema{
+		Type: StringOrArrayOfString{"object"},
+		Properties: map[string]*Schema{
+			"exports": {
+				Type: StringOrArrayOfString{"object"},
+				Properties: map[string]*Schema{
+					"defaults": {
+						Type: StringOrArrayOfString{"object"},
+						Properties: map[string]*Schema{
+							"foo": {
+								Type:  StringOrArrayOfString{"string"},
+								Title: "Foo",
+							},
+							"bar": {
+								Type:  StringOrArrayOfString{"integer"},
+								Title: "Bar",
+							},
+						},
+					},
+				},
+			},
+			"config": {
+				Type:  StringOrArrayOfString{"object"},
+				Title: "Config",
+			},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		path          string
+		expectedTitle string
+		expectNil     bool
+	}{
+		{
+			name:          "empty path returns self",
+			path:          "",
+			expectedTitle: "",
+			expectNil:     false,
+		},
+		{
+			name:          "single level path",
+			path:          "config",
+			expectedTitle: "Config",
+			expectNil:     false,
+		},
+		{
+			name:          "nested path",
+			path:          "exports.defaults.foo",
+			expectedTitle: "Foo",
+			expectNil:     false,
+		},
+		{
+			name:      "non-existent path",
+			path:      "exports.nonexistent",
+			expectNil: true,
+		},
+		{
+			name:      "path through non-object",
+			path:      "config.deeper",
+			expectNil: true,
+		},
+		{
+			name:          "path with leading dot",
+			path:          ".config",
+			expectedTitle: "Config",
+			expectNil:     false,
+		},
+		{
+			name:          "path with trailing dot",
+			path:          "config.",
+			expectedTitle: "Config",
+			expectNil:     false,
+		},
+		{
+			name:          "path with consecutive dots",
+			path:          "exports..defaults.foo",
+			expectedTitle: "Foo",
+			expectNil:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := schema.GetPropertyAtPath(tt.path)
+
+			if tt.expectNil {
+				if result != nil {
+					t.Errorf("Expected nil result, got %+v", result)
+				}
+				return
+			}
+
+			if result == nil {
+				t.Errorf("Expected non-nil result")
+				return
+			}
+
+			if tt.path == "" {
+				if result != schema {
+					t.Errorf("Empty path should return self")
+				}
+				return
+			}
+
+			if result.Title != tt.expectedTitle {
+				t.Errorf("Expected Title %q, got %q", tt.expectedTitle, result.Title)
+			}
+		})
+	}
+}
+
+func TestSetPropertyAtPath(t *testing.T) {
+	tests := []struct {
+		name         string
+		path         string
+		expectedPath []string
+	}{
+		{
+			name:         "empty path returns self",
+			path:         "",
+			expectedPath: []string{},
+		},
+		{
+			name:         "single level path",
+			path:         "config",
+			expectedPath: []string{"config"},
+		},
+		{
+			name:         "nested path",
+			path:         "exports.defaults.settings",
+			expectedPath: []string{"exports", "defaults", "settings"},
+		},
+		{
+			name:         "path with leading dot",
+			path:         ".config",
+			expectedPath: []string{"config"},
+		},
+		{
+			name:         "path with trailing dot",
+			path:         "config.",
+			expectedPath: []string{"config"},
+		},
+		{
+			name:         "path with consecutive dots",
+			path:         "exports..defaults",
+			expectedPath: []string{"exports", "defaults"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := &Schema{
+				Type:       StringOrArrayOfString{"object"},
+				Properties: make(map[string]*Schema),
+			}
+
+			result := schema.SetPropertyAtPath(tt.path)
+
+			if tt.path == "" {
+				if result != schema {
+					t.Errorf("Empty path should return self")
+				}
+				return
+			}
+
+			// Verify the path was created
+			current := schema
+			for _, part := range tt.expectedPath {
+				if current.Properties == nil {
+					t.Errorf("Expected Properties to be initialized at %s", part)
+					return
+				}
+				prop, ok := current.Properties[part]
+				if !ok {
+					t.Errorf("Expected property %s to exist", part)
+					return
+				}
+				current = prop
+			}
+
+			if current != result {
+				t.Errorf("Final property should match returned schema")
+			}
+		})
+	}
+}
+
 func TestHoistDefinitions(t *testing.T) {
 	// Create a schema with nested definitions
 	restConfig := &Schema{

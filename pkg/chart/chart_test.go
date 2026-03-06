@@ -33,6 +33,95 @@ func TestReadChartFile(t *testing.T) {
 	}
 }
 
+func TestImportValuesParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []interface{}
+		wantErr  bool
+	}{
+		{
+			name: "simple string import-values",
+			input: `
+name: dep1
+import-values:
+  - defaults`,
+			expected: []interface{}{"defaults"},
+			wantErr:  false,
+		},
+		{
+			name: "complex map import-values",
+			input: `
+name: dep1
+import-values:
+  - child: exports.data
+    parent: mydata`,
+			expected: []interface{}{
+				map[string]interface{}{
+					"child":  "exports.data",
+					"parent": "mydata",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "mixed import-values",
+			input: `
+name: dep1
+import-values:
+  - defaults
+  - child: exports.config
+    parent: config`,
+			expected: []interface{}{
+				"defaults",
+				map[string]interface{}{
+					"child":  "exports.config",
+					"parent": "config",
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var dep Dependency
+			err := yaml.Unmarshal([]byte(tt.input), &dep)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("yaml.Unmarshal() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if len(dep.ImportValues) != len(tt.expected) {
+					t.Errorf("ImportValues length = %v, want %v", len(dep.ImportValues), len(tt.expected))
+					return
+				}
+				for i, val := range dep.ImportValues {
+					switch expected := tt.expected[i].(type) {
+					case string:
+						if val != expected {
+							t.Errorf("ImportValues[%d] = %v, want %v", i, val, expected)
+						}
+					case map[string]interface{}:
+						valMap, ok := val.(map[string]interface{})
+						if !ok {
+							t.Errorf("ImportValues[%d] is not a map, got %T", i, val)
+							continue
+						}
+						for k, v := range expected {
+							if valMap[k] != v {
+								t.Errorf("ImportValues[%d][%s] = %v, want %v", i, k, valMap[k], v)
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestChartFileParsing(t *testing.T) {
 	tests := []struct {
 		name     string

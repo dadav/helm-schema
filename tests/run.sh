@@ -39,4 +39,25 @@ else
 	rc=1
 fi
 
+# Import-values tests (in separate directory to avoid interference with single-file tests)
+echo "Testing import-values (simple form)"
+../helm-schema -c ../import-values >/dev/null 2>&1
+if diff -y --suppress-common-lines <(jq --sort-keys . ../import-values/parent/values.schema.json) <(jq --sort-keys . ../import-values/parent/values.schema.expected.json); then
+	echo "✅: import-values (simple form)"
+else
+	echo "❌: import-values (simple form)"
+	rc=1
+fi
+
+echo "Testing import-values (complex form)"
+if diff -y --suppress-common-lines <(jq --sort-keys . ../import-values/parent-complex/values.schema.json) <(jq --sort-keys . ../import-values/parent-complex/values.schema.expected.json); then
+	echo "✅: import-values (complex form)"
+else
+	echo "❌: import-values (complex form)"
+	rc=1
+fi
+
+rm -f ../import-values/parent/values.schema.json ../import-values/child/values.schema.json
+rm -f ../import-values/parent-complex/values.schema.json ../import-values/child-complex/values.schema.json
+
 exit "$rc"
