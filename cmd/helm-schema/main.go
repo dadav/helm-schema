@@ -35,6 +35,145 @@ func getDependencyNames(dependencies []*chart.Dependency, dependenciesFilterMap 
 	return depNames
 }
 
+// mergeSchemaProperties merges properties from source to target schema.
+// It skips "global" and properties in the skip map, and returns merged property names.
+// Follows Helm's value coalescing behavior with one exception:
+// - If target has explicit @schema annotation (HasData=true), target wins
+// - If target only has inferred schema (HasData=false), source wins
+func mergeSchemaProperties(
+	target *schema.Schema,
+	source *schema.Schema,
+	skip map[string]bool,
+	sourceName string,
+	targetName string,
+) map[string]bool {
+	merged := make(map[string]bool)
+
+	if source.Properties == nil {
+		return merged
+	}
+
+	if target.Properties == nil {
+		target.Properties = make(map[string]*schema.Schema)
+	}
+
+	for propName, propSchema := range source.Properties {
+		if propName == "global" {
+			continue
+		}
+		if skip != nil && skip[propName] {
+			continue
+		}
+		existingProp, exists := target.Properties[propName]
+		if !exists {
+			target.Properties[propName] = propSchema
+			merged[propName] = true
+		} else if !existingProp.HasData && propSchema.HasData {
+			// Target only has inferred schema, source has explicit annotation - source wins
+			target.Properties[propName] = propSchema
+			merged[propName] = true
+			log.Debugf("Property %s from %s replaces inferred schema in %s", propName, sourceName, targetName)
+		} else if existingProp.HasData {
+			// Target has explicit @schema annotation, keep it
+			log.Debugf("Property %s from %s skipped: %s has explicit @schema annotation", propName, sourceName, targetName)
+		} else {
+			// Both are inferred schemas, keep target (first wins)
+			log.Debugf("Property %s from %s skipped: both schemas are inferred, keeping first", propName, sourceName)
+		}
+	}
+
+	return merged
+}
+
+// processImportValues processes the import-values directive for a dependency.
+// It returns a map of property names that were imported (to track what was handled).
+func processImportValues(
+	parentSchema *schema.Schema,
+	depSchema *schema.Schema,
+	dep *chart.Dependency,
+	parentChartName string,
+) map[string]bool {
+	importedProps := make(map[string]bool)
+
+	if len(dep.ImportValues) == 0 {
+		return importedProps
+	}
+
+	for _, importValue := range dep.ImportValues {
+		var childPath, parentPath string
+
+		switch v := importValue.(type) {
+		case string:
+			// Simple form: "defaults" -> imports from exports.<value> to root
+			childPath = "exports." + v
+			parentPath = ""
+		case map[string]interface{}:
+			// Complex form: {child: "path", parent: "path"}
+			if child, ok := v["child"].(string); ok {
+				childPath = child
+			}
+			if parent, ok := v["parent"].(string); ok {
+				parentPath = parent
+			}
+		case map[interface{}]interface{}:
+			// YAML sometimes produces this type variation
+			if child, ok := v["child"].(string); ok {
+				childPath = child
+			}
+			if parent, ok := v["parent"].(string); ok {
+				parentPath = parent
+			}
+		default:
+			log.Warnf("Unknown import-values format for dependency %s in chart %s: %T", dep.Name, parentChartName, importValue)
+			continue
+		}
+
+		if childPath == "" {
+			log.Warnf("Empty child path in import-values for dependency %s in chart %s", dep.Name, parentChartName)
+			continue
+		}
+
+		// Get the source schema from the dependency
+		sourceSchema := depSchema.GetPropertyAtPath(childPath)
+		if sourceSchema == nil {
+			log.Warnf("Could not find path %q in dependency %s schema for chart %s", childPath, dep.Name, parentChartName)
+			continue
+		}
+
+		if sourceSchema.Properties == nil {
+			log.Warnf("No properties found at path %q in dependency %s for chart %s", childPath, dep.Name, parentChartName)
+			continue
+		}
+
+		// Determine target schema in parent
+		var targetSchema *schema.Schema
+		if parentPath == "" {
+			targetSchema = parentSchema
+		} else {
+			targetSchema = parentSchema.SetPropertyAtPath(parentPath)
+		}
+
+		merged := mergeSchemaProperties(
+			targetSchema,
+			sourceSchema,
+			nil,
+			fmt.Sprintf("import-values of %s", dep.Name),
+			parentChartName,
+		)
+		targetPathDisplay := parentPath
+		if targetPathDisplay == "" {
+			targetPathDisplay = "root"
+		}
+		for k := range merged {
+			importedProps[k] = true
+			log.Debugf("Imported property %q from %s.%s to %s in chart %s",
+				k, dep.Name, childPath, targetPathDisplay, parentChartName)
+		}
+	}
+
+	return importedProps
+}
+
 func exec(cmd *cobra.Command, _ []string) error {
 	configureLogging()
 
@@ -135,7 +274,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Drain any remaining errors
-	drainErrors:
+drainErrors:
 	for {
 		select {
 		case err, ok := <-errs:
@@ -290,24 +429,29 @@ func exec(cmd *cobra.Command, _ []string) error {
 							dependencyResult.ChartPath,
 						)
 
+						// Process import-values first (before regular dependency nesting)
+						importedProps := processImportValues(
+							&result.Schema,
+							&dependencyResult.Schema,
+							dep,
+							result.Chart.Name,
+						)
+						hasImportValues := len(dep.ImportValues) > 0
+
 						// Check if this is a library chart
 						if dependencyResult.Chart.Type == "library" {
 							// For library charts, merge properties directly into parent schema
 							log.Debugf("Merging library chart %s properties into parent chart %s at top level", dep.Name, result.Chart.Name)
-							for propName, propSchema := range dependencyResult.Schema.Properties {
-								// Skip the global property as it's already in the parent
-								if propName == "global" {
-									continue
-								}
-								// Only add if the property doesn't already exist in parent
-								if _, exists := result.Schema.Properties[propName]; !exists {
-									result.Schema.Properties[propName] = propSchema
-								} else {
-									log.Warnf("Property %s from library chart %s already exists in parent chart %s, skipping", propName, dep.Name, result.Chart.Name)
-								}
-							}
-						} else {
-							// For non-library charts, nest under dependency name
+							mergeSchemaProperties(
+								&result.Schema,
+								&dependencyResult.Schema,
+								importedProps,
+								fmt.Sprintf("library chart %s", dep.Name),
+								fmt.Sprintf("parent chart %s", result.Chart.Name),
+							)
+						} else if !hasImportValues {
+							// For non-library charts WITHOUT import-values, nest under dependency name
+							// (If import-values is used, user explicitly controls what's imported)
 							depSchema := schema.Schema{
 								Type:        []string{"object"},
 								Title:       dep.Name,

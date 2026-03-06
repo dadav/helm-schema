@@ -1,0 +1,18 @@
+# @schema
+# type: object
+# @schema
+data:
+  # @schema
+  # type: object
+  # @schema
+  database:
+    # @schema
+    # type: string
+    # description: Database connection string
+    # @schema
+    connectionString: "postgres://localhost:5432/db"
+    # @schema
+    # type: integer
+    # description: Max connections
+    # @schema
+    maxConnections: 100

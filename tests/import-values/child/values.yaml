@@ -1,0 +1,30 @@
+# @schema
+# type: object
+# @schema
+exports:
+  # @schema
+  # type: object
+  # @schema
+  defaults:
+    # @schema
+    # type: string
+    # description: The database host
+    # @schema
+    dbHost: localhost
+    # @schema
+    # type: integer
+    # description: The database port
+    # @schema
+    dbPort: 5432
+    # @schema
+    # type: object
+    # description: Extra configuration options
+    # additionalProperties: true
+    # @schema
+    extraConfig: {}
+
+# @schema
+# type: string
+# description: Internal config not exported
+# @schema
+internalConfig: secret
