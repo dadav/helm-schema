@@ -1331,6 +1331,47 @@ func FixRequiredProperties(schema *Schema) error {
 	return nil
 }
 
+// applyRootSchemaProperties copies root-level schema properties from source to target.
+// Used for applying @schema.root annotations.
+func (s *Schema) applyRootSchemaProperties(source *Schema, valuesPath string) error {
+	if source.Title != "" {
+		s.Title = source.Title
+	}
+	if source.Description != "" {
+		s.Description = source.Description
+	}
+	if source.Ref != "" {
+		if err := handleSchemaRefs(source, valuesPath); err != nil {
+			return err
+		}
+		s.Ref = source.Ref
+	}
+	if len(source.Examples) > 0 {
+		s.Examples = source.Examples
+	}
+	if source.Deprecated {
+		s.Deprecated = source.Deprecated
+	}
+	if source.ReadOnly {
+		s.ReadOnly = source.ReadOnly
+	}
+	if source.WriteOnly {
+		s.WriteOnly = source.WriteOnly
+	}
+	if source.AdditionalProperties != nil {
+		s.AdditionalProperties = source.AdditionalProperties
+	}
+	if len(source.CustomAnnotations) > 0 {
+		if s.CustomAnnotations == nil {
+			s.CustomAnnotations = make(map[string]interface{})
+		}
+		for k, v := range source.CustomAnnotations {
+			s.CustomAnnotations[k] = v
+		}
+	}
+	return nil
+}
+
 // GetRootSchemaFromComment parses root-level schema annotations (marked with @schema.root)
 // from a comment and returns the schema, the remaining comment (without root annotations),
 // and any error. Root schema annotations are useful for applying schema properties to the
@@ -1442,6 +1483,20 @@ func YamlToSchema(
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
 
+		// Check document-level HeadComment for @schema.root (handles blank-line separated case)
+		if node.HeadComment != "" {
+			if docRootSchema, _, err := GetRootSchemaFromComment(node.HeadComment); err != nil {
+				return nil, fmt.Errorf("error parsing root schema from document comment: %w", err)
+			} else if docRootSchema.HasData {
+				if err := schema.applyRootSchemaProperties(&docRootSchema, valuesPath); err != nil {
+					return nil, fmt.Errorf("error applying root schema from document comment: %w", err)
+				}
+				if err := docRootSchema.Validate(); err != nil {
+					return nil, fmt.Errorf("error validating root schema from document comment: %w", err)
+				}
+			}
+		}
+
 		childSchema, err := YamlToSchema(
 			valuesPath,
 			node.Content[0],
@@ -1516,60 +1571,20 @@ func YamlToSchema(
 		// Check if the first key has root schema annotations (only for root-level mappings)
 		if len(node.Content) > 0 && parentRequiredProperties != nil {
 			firstKeyNode := node.Content[0]
-			
-			comment := firstKeyNode.HeadComment
-			if !keepFullComment {
-				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
-			}
-			
-			// Try to extract root schema annotations
-			rootSchema, remainingComment, err := GetRootSchemaFromComment(comment)
+
+			// Try to extract root schema annotations (adjacent to first key)
+			rootSchema, remainingComment, err := GetRootSchemaFromComment(firstKeyNode.HeadComment)
 			if err != nil {
 				return nil, fmt.Errorf("error parsing root schema comment: %w", err)
 			}
-			
+
 			if rootSchema.HasData {
-				// Apply root schema annotations to the schema being built
-				if rootSchema.Title != "" {
-					schema.Title = rootSchema.Title
+				if err := schema.applyRootSchemaProperties(&rootSchema, valuesPath); err != nil {
+					return nil, fmt.Errorf("error applying root schema: %w", err)
 				}
-				if rootSchema.Description != "" {
-					schema.Description = rootSchema.Description
-				}
-				if rootSchema.Ref != "" {
-					if err := handleSchemaRefs(&rootSchema, valuesPath); err != nil {
-						return nil, fmt.Errorf("error resolving $ref in root schema: %w", err)
-					}
-					schema.Ref = rootSchema.Ref
-				}
-				if len(rootSchema.Examples) > 0 {
-					schema.Examples = rootSchema.Examples
-				}
-				if rootSchema.Deprecated {
-					schema.Deprecated = rootSchema.Deprecated
-				}
-				if rootSchema.ReadOnly {
-					schema.ReadOnly = rootSchema.ReadOnly
-				}
-				if rootSchema.WriteOnly {
-					schema.WriteOnly = rootSchema.WriteOnly
-				}
-				if rootSchema.AdditionalProperties != nil {
-					schema.AdditionalProperties = rootSchema.AdditionalProperties
-				}
-				if len(rootSchema.CustomAnnotations) > 0 {
-					if schema.CustomAnnotations == nil {
-						schema.CustomAnnotations = make(map[string]interface{})
-					}
-					for k, v := range rootSchema.CustomAnnotations {
-						schema.CustomAnnotations[k] = v
-					}
-				}
-				
 				if err := rootSchema.Validate(); err != nil {
 					return nil, fmt.Errorf("error validating root schema: %w", err)
 				}
-				
 				// Update the first key's comment to exclude the root schema annotations
 				firstKeyNode.HeadComment = remainingComment
 			}

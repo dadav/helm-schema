@@ -141,6 +141,18 @@ app: myapp`,
 			expectedTitle:       "Custom Chart",
 			expectedCustomField: "3.0",
 		},
+		{
+			name: "root schema separated by blank lines",
+			yamlContent: `# @schema.root
+# additionalProperties: true
+# @schema.root
+
+# @schema
+# type: object
+# @schema
+_: {}`,
+			expectedAdditionalProp: true,
+		},
 	}
 
 	for _, tt := range tests {
