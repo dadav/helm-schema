@@ -1361,6 +1361,34 @@ func (s *Schema) applyRootSchemaProperties(source *Schema, valuesPath string) er
 	if source.AdditionalProperties != nil {
 		s.AdditionalProperties = source.AdditionalProperties
 	}
+	if len(source.PatternProperties) > 0 {
+		if s.PatternProperties == nil {
+			s.PatternProperties = make(map[string]*Schema)
+		}
+		for k, v := range source.PatternProperties {
+			s.PatternProperties[k] = v
+		}
+	}
+	if len(source.Definitions) > 0 {
+		if s.Definitions == nil {
+			s.Definitions = make(map[string]*Schema)
+		}
+		for k, v := range source.Definitions {
+			s.Definitions[k] = v
+		}
+	}
+	if len(source.AllOf) > 0 {
+		s.AllOf = source.AllOf
+	}
+	if len(source.AnyOf) > 0 {
+		s.AnyOf = source.AnyOf
+	}
+	if len(source.OneOf) > 0 {
+		s.OneOf = source.OneOf
+	}
+	if source.Not != nil {
+		s.Not = source.Not
+	}
 	if len(source.CustomAnnotations) > 0 {
 		if s.CustomAnnotations == nil {
 			s.CustomAnnotations = make(map[string]interface{})
@@ -1512,39 +1540,10 @@ func YamlToSchema(
 		}
 		
 		schema.Properties = childSchema.Properties
-		
+
 		// Apply root schema properties from child if they were set
-		if childSchema.Title != "" {
-			schema.Title = childSchema.Title
-		}
-		if childSchema.Description != "" {
-			schema.Description = childSchema.Description
-		}
-		if childSchema.Ref != "" {
-			schema.Ref = childSchema.Ref
-		}
-		if len(childSchema.Examples) > 0 {
-			schema.Examples = childSchema.Examples
-		}
-		if childSchema.Deprecated {
-			schema.Deprecated = childSchema.Deprecated
-		}
-		if childSchema.ReadOnly {
-			schema.ReadOnly = childSchema.ReadOnly
-		}
-		if childSchema.WriteOnly {
-			schema.WriteOnly = childSchema.WriteOnly
-		}
-		if childSchema.AdditionalProperties != nil {
-			schema.AdditionalProperties = childSchema.AdditionalProperties
-		}
-		if len(childSchema.CustomAnnotations) > 0 {
-			if schema.CustomAnnotations == nil {
-				schema.CustomAnnotations = make(map[string]interface{})
-			}
-			for k, v := range childSchema.CustomAnnotations {
-				schema.CustomAnnotations[k] = v
-			}
+		if err := schema.applyRootSchemaProperties(childSchema, valuesPath); err != nil {
+			return nil, fmt.Errorf("error applying root schema properties from child: %w", err)
 		}
 
 		if _, ok := schema.Properties["global"]; !ok && !dontAddGlobal {
