@@ -1419,6 +1419,9 @@ func (s *Schema) applyRootSchemaProperties(source *Schema, valuesPath string) er
 	if source.AdditionalProperties != nil {
 		s.AdditionalProperties = source.AdditionalProperties
 	}
+	if len(source.Required.Strings) > 0 || source.Required.Bool {
+		s.Required = source.Required
+	}
 	if len(source.PatternProperties) > 0 {
 		if s.PatternProperties == nil {
 			s.PatternProperties = make(map[string]*Schema)
@@ -1596,7 +1599,7 @@ func YamlToSchema(
 		if err != nil {
 			return nil, err
 		}
-		
+
 		schema.Properties = childSchema.Properties
 
 		// Apply root schema properties from child if they were set
@@ -1646,7 +1649,7 @@ func YamlToSchema(
 				firstKeyNode.HeadComment = remainingComment
 			}
 		}
-		
+
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
