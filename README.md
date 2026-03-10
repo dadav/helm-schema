@@ -119,6 +119,7 @@ The binary has the following options:
 
 ```sh
 Flags:
+  -A, --annotate                               "write inferred @schema type blocks into the first matching values file instead of generating schema"
   -r, --add-schema-reference                   "add reference to schema in values.yaml if not found"
   -w, --allow-circular-dependencies            "allow circular dependencies between charts (will log a warning instead of failing)"
   -a, --append-newline                         "append newline to generated jsonschema at the end of the file"
@@ -134,11 +135,25 @@ Flags:
   -n, --no-dependencies                        "don't analyze dependencies"
   -o, --output-file string                     "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
   -m, --skip-dependencies-schema-validation    "skip schema validation for dependencies by setting additionalProperties to true and removing from required"
-  -f, --value-files strings                    "filenames to check for chart values (default [values.yaml])"
+  -f, --value-files strings                    "filenames to look for chart values; schema generation merges all matches in the order provided (default [values.yaml])"
   -k, --skip-auto-generation strings           "skip the auto generation for these fields (default [])"
   -u, --uncomment                              "consider yaml which is commented out"
   -v, --version                                "version for helm-schema"
 ```
+
+For schema generation, `helm-schema` checks each `--value-files` entry for the chart, keeps the ones that exist, and merges them in the order provided. Later files take precedence over earlier files, following Helm's `-f/--values` behavior.
+
+`--annotate` does not merge multiple files. It only annotates the first matching values file.
+
+`--add-schema-reference` also targets the first matching values file.
+
+### Annotate mode
+
+Use `--annotate` to add inferred `# @schema` type blocks to a values file instead of generating `values.schema.json`.
+
+- Keys that already have `@schema` annotations are left unchanged.
+- With `-d, --dry-run`, the annotated file is printed to stdout instead of being written back.
+- When multiple `--value-files` entries are configured, annotate mode uses only the first matching file.
 
 ## Annotations
 

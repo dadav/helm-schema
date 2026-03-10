@@ -81,9 +81,12 @@ go mod tidy
 - Workers pull chart paths from a channel and process them independently
 - Each worker:
   1. Reads Chart.yaml
-  2. Finds values.yaml (tries multiple filenames from config)
-  3. Parses values into a Schema
+  2. For schema generation, finds all configured values files that exist for the chart and merges them in CLI order
+  3. Parses merged values into a Schema
   4. Sends Result to results channel
+
+- When multiple values files are present, later files override earlier files using Helm-style nested map merge precedence.
+- `--annotate` and `--add-schema-reference` still operate on the first matching values file only; they do not merge multiple files.
 
 #### Dependency Graph (`pkg/schema/toposort.go`)
 
