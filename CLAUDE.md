@@ -153,14 +153,21 @@ The project implements Helm v4 plugin verification through GPG signing:
    - Uses GPG to sign the provenance
 
 2. **GitHub Actions Workflow**: `.github/workflows/release.yml`
+   - Generates release notes with `orhun/git-cliff-action@v4` using `cliff.toml`
    - Imports GPG private key from secrets (`GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`)
    - Runs goreleaser to build and package binaries
+   - Updates the GitHub release body from `RELEASE_NOTES.md`
    - Signs all `.tar.gz` files with `sign-plugin.sh`
    - Uploads `.prov` files to GitHub releases
 
 3. **GoReleaser Config**: `.goreleaser.yaml`
    - Archives include plugin files: `plugin.yaml`, `install-binary.sh`, `README.md`, `LICENSE`
    - Configured to sign checksums with GPG
+
+4. **git-cliff Config**: `cliff.toml`
+   - Groups conventional commits into release note sections
+   - Uses GitHub metadata to link pull requests in generated release notes
+   - Generates only the latest tagged release notes in CI via `--latest --strip header`
 
 ### Setup for Maintainers
 
