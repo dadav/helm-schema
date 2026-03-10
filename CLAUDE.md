@@ -230,6 +230,7 @@ The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Dr
 
 - `deprecated`, `readOnly`, `writeOnly`
 - `enum`, `const`
+- `const-from-value` copies the YAML value into the generated `const` keyword and must not be combined with explicit `const`
 
 ### Custom Annotations
 

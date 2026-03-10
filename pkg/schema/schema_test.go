@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -863,6 +864,100 @@ func TestConstNullMarshaling(t *testing.T) {
 			}
 			if !tt.shouldContain && contains {
 				t.Errorf("Expected JSON to NOT contain %q, but got:\n%s", tt.expectedJSON, jsonStr)
+			}
+		})
+	}
+}
+
+func TestYamlToSchemaConstFromValue(t *testing.T) {
+	tests := []struct {
+		name          string
+		yamlContent   string
+		expectedConst interface{}
+		expectedErr   string
+	}{
+		{
+			name: "scalar string value",
+			yamlContent: `# @schema
+# const-from-value: true
+# @schema
+message: |
+  long message with {{ .gotemplate }}`,
+			expectedConst: "long message with {{ .gotemplate }}",
+		},
+		{
+			name: "null value",
+			yamlContent: `# @schema
+# const-from-value: true
+# @schema
+message: null`,
+			expectedConst: nil,
+		},
+		{
+			name: "mapping value",
+			yamlContent: `# @schema
+# const-from-value: true
+# @schema
+message:
+  enabled: true
+  retries: 2`,
+			expectedConst: map[string]interface{}{
+				"enabled": true,
+				"retries": 2,
+			},
+		},
+		{
+			name: "conflicts with explicit const",
+			yamlContent: `# @schema
+# const: fixed
+# const-from-value: true
+# @schema
+message: fixed`,
+			expectedErr: "const and const-from-value cannot be used together",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var node yaml.Node
+			if err := yaml.Unmarshal([]byte(tt.yamlContent), &node); err != nil {
+				t.Fatalf("Failed to unmarshal YAML: %v", err)
+			}
+
+			skipConfig := &SkipAutoGenerationConfig{}
+			schema, err := YamlToSchema("", &node, false, false, false, true, skipConfig, nil)
+			if tt.expectedErr != "" {
+				if err == nil {
+					t.Fatalf("Expected error containing %q, got nil", tt.expectedErr)
+				}
+				if !strings.Contains(err.Error(), tt.expectedErr) {
+					t.Fatalf("Expected error containing %q, got %v", tt.expectedErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("YamlToSchema failed: %v", err)
+			}
+
+			property, ok := schema.Properties["message"]
+			if !ok {
+				t.Fatal("Expected schema to contain message property")
+			}
+
+			if !reflect.DeepEqual(property.Const, tt.expectedConst) {
+				t.Fatalf("Expected const %#v, got %#v", tt.expectedConst, property.Const)
+			}
+
+			jsonData, err := property.ToJson()
+			if err != nil {
+				t.Fatalf("Failed to marshal property schema to JSON: %v", err)
+			}
+
+			if !strings.Contains(string(jsonData), `"const"`) {
+				t.Fatalf("Expected JSON to contain const, got %s", string(jsonData))
+			}
+			if strings.Contains(string(jsonData), "const-from-value") {
+				t.Fatalf("Did not expect JSON to contain const-from-value, got %s", string(jsonData))
 			}
 		})
 	}

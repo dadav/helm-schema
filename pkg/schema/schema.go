@@ -263,6 +263,7 @@ type Schema struct {
 	Else                 *Schema                `yaml:"else,omitempty"                 json:"else,omitempty"`
 	Pattern              string                 `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
 	Const                interface{}            `yaml:"const,omitempty"                json:"const,omitempty"`
+	ConstFromValue       bool                   `yaml:"const-from-value,omitempty"     json:"-"`
 	Ref                  string                 `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
 	Schema               string                 `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
 	Id                   string                 `yaml:"$id,omitempty"                  json:"$id,omitempty"`
@@ -1703,6 +1704,20 @@ func YamlToSchema(
 				}
 			}
 
+			if keyNodeSchema.ConstFromValue {
+				if keyNodeSchema.constWasSet {
+					return nil, fmt.Errorf("error validating schema of key %s: const and const-from-value cannot be used together", keyNode.Value)
+				}
+
+				decodedValue, err := decodeNodeValue(valueNode)
+				if err != nil {
+					return nil, fmt.Errorf("error decoding value for const-from-value on key %s: %w", keyNode.Value, err)
+				}
+
+				keyNodeSchema.Const = decodedValue
+				keyNodeSchema.constWasSet = true
+			}
+
 			if keyNodeSchema.HasData {
 				if err := keyNodeSchema.Validate(); err != nil {
 					return nil, fmt.Errorf("error validating schema of key %s: %w", keyNode.Value, err)
@@ -1893,6 +1908,17 @@ func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
 	}
 
 	return rawValue
+}
+
+// decodeNodeValue converts a yaml.Node into a plain Go value suitable for JSON Schema keywords.
+// Aliases are expanded by yaml.v3 during Decode.
+func decodeNodeValue(node *yaml.Node) (interface{}, error) {
+	var value interface{}
+	if err := node.Decode(&value); err != nil {
+		return nil, err
+	}
+
+	return value, nil
 }
 
 // handleSchemaRefs processes and resolves JSON Schema references ($ref) within a schema.

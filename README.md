@@ -627,6 +627,18 @@ Defines a constant value which shouldn't be changed.
 maintainer: maintainer@example.org
 ```
 
+#### `const-from-value`
+
+Copies the YAML value into the generated JSON Schema `const` without duplicating the payload in the annotation block.
+
+```yaml
+# @schema
+# const-from-value: true
+# @schema
+message: |
+  long message with {{ .gotemplate }}
+```
+
 #### `examples`
 
 Provides example values to the user when hovering the key in IDE, or by auto-completion mechanism.
