@@ -75,6 +75,9 @@ gpg --keyserver keyserver.ubuntu.com --recv-keys F58707969D0FBFA5
 # Verify the imported key fingerprint (expect: 806F 70D2 5667 D42A AE4E 07CE F587 0796 9D0F BFA5)
 gpg --fingerprint F58707969D0FBFA5
 
+# Export from kdx and save in old gpg format
+gpg --export F58707969D0FBFA5 > ~/.gnupg/pubring.gpg
+
 # Install with explicit verification
 helm plugin install https://github.com/dadav/helm-schema/releases/download/vX.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz --verify
 ```
