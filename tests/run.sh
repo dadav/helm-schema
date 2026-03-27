@@ -60,4 +60,25 @@ fi
 rm -f ../import-values/parent/values.schema.json ../import-values/child/values.schema.json
 rm -f ../import-values/parent-complex/values.schema.json ../import-values/child-complex/values.schema.json
 
+# Pre-existing schema test
+echo "Testing pre-existing dependency schema"
+dep_schema_before=$(cat ../preexisting-schema/dep-with-schema/values.schema.json)
+../helm-schema -c ../preexisting-schema >/dev/null 2>&1
+if diff -y --suppress-common-lines <(jq --sort-keys . ../preexisting-schema/parent/values.schema.json) <(jq --sort-keys . ../preexisting-schema/parent/values.schema.expected.json); then
+	echo "✅: pre-existing dependency schema"
+else
+	echo "❌: pre-existing dependency schema"
+	rc=1
+fi
+
+dep_schema_after=$(cat ../preexisting-schema/dep-with-schema/values.schema.json)
+if [ "$dep_schema_before" = "$dep_schema_after" ]; then
+	echo "✅: dependency schema not overwritten"
+else
+	echo "❌: dependency schema was overwritten"
+	rc=1
+fi
+
+rm -f ../preexisting-schema/parent/values.schema.json
+
 exit "$rc"

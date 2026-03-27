@@ -13,11 +13,12 @@ import (
 )
 
 type Result struct {
-	ChartPath  string
-	ValuesPath string
-	Chart      *chart.ChartFile
-	Schema     Schema
-	Errors     []error
+	ChartPath         string
+	ValuesPath        string
+	Chart             *chart.ChartFile
+	Schema            Schema
+	Errors            []error
+	PreExistingSchema bool
 }
 
 func Worker(

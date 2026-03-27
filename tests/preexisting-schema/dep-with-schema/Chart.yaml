@@ -1,0 +1,4 @@
+apiVersion: v2
+name: dep-with-schema
+version: 1.0.0
+description: A dependency chart with its own schema

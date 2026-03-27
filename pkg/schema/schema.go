@@ -379,8 +379,8 @@ func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for Schema objects.
-// It handles both "definitions" (Draft 7) and "$defs" (Draft 2019-09+) keywords,
-// merging them into the Definitions field for consistent Draft 7 output.
+// It handles "definitions" (Draft 7), "$defs" (Draft 2019-09+), custom
+// annotations (prefixed with "x-"), and tracks explicit "const" fields.
 func (s *Schema) UnmarshalJSON(data []byte) error {
 	// Create an alias type to avoid recursion
 	type schemaAlias Schema
@@ -391,7 +391,7 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Parse raw JSON to check for $defs
+	// Parse raw JSON to check for $defs, custom annotations, and const
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -412,6 +412,28 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 				alias.Definitions[k] = v
 			}
 		}
+	}
+
+	// Track if const field was explicitly set (even to null)
+	if _, ok := raw["const"]; ok {
+		alias.constWasSet = true
+	}
+
+	// Extract custom annotations (x-* prefixed keys)
+	knownKeys := s.getJsonKeys()
+	alias.CustomAnnotations = make(map[string]interface{})
+	for key, rawValue := range raw {
+		if !strings.HasPrefix(key, CustomAnnotationPrefix) {
+			continue
+		}
+		if slices.Contains(knownKeys, key) {
+			continue
+		}
+		var value interface{}
+		if err := json.Unmarshal(rawValue, &value); err != nil {
+			return fmt.Errorf("failed to unmarshal custom annotation %s: %w", key, err)
+		}
+		alias.CustomAnnotations[key] = value
 	}
 
 	// Copy alias to the main struct
