@@ -108,7 +108,7 @@ key1: value1
 			// Create test files
 			for filename, content := range tt.setupFiles {
 				path := filepath.Join(tmpDir, filename)
-				err := os.WriteFile(path, []byte(content), 0644)
+				err := os.WriteFile(path, []byte(content), 0o644)
 				assert.NoError(t, err)
 			}
 

@@ -20,6 +20,25 @@ type Result struct {
 	Errors     []error
 }
 
+// OverrideInfo tracks which subcharts have schema overrides in parent charts
+type OverrideInfo struct {
+	overriddenCharts map[string]bool // map of chart names that have $ref overrides
+}
+
+func NewOverrideInfo() *OverrideInfo {
+	return &OverrideInfo{
+		overriddenCharts: make(map[string]bool),
+	}
+}
+
+func (o *OverrideInfo) MarkOverridden(chartName string) {
+	o.overriddenCharts[chartName] = true
+}
+
+func (o *OverrideInfo) IsOverridden(chartName string) bool {
+	return o.overriddenCharts[chartName]
+}
+
 func Worker(
 	dryRun, uncomment, addSchemaReference, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, annotate bool,
 	valueFileNames []string,
@@ -162,3 +181,77 @@ func Worker(
 		results <- result
 	}
 }
+
+// DetectSubchartOverrides scans a values file for subchart keys with $ref overrides
+// Returns a map of subchart names that have schema overrides
+func DetectSubchartOverrides(valuesPath string, dependencies []*chart.Dependency) (map[string]bool, error) {
+	overrides := make(map[string]bool)
+
+	if len(dependencies) == 0 {
+		return overrides, nil
+	}
+
+	valuesFile, err := os.Open(valuesPath)
+	if err != nil {
+		return overrides, err
+	}
+	defer valuesFile.Close()
+
+	content, err := util.ReadFileAndFixNewline(valuesFile)
+	if err != nil {
+		return overrides, err
+	}
+
+	var values yaml.Node
+	if err := yaml.Unmarshal(content, &values); err != nil {
+		return overrides, err
+	}
+
+	// Navigate to the mapping node
+	if values.Kind != yaml.DocumentNode || len(values.Content) != 1 {
+		return overrides, nil
+	}
+
+	mappingNode := values.Content[0]
+	if mappingNode.Kind != yaml.MappingNode {
+		return overrides, nil
+	}
+
+	// Create a map of dependency names and aliases for quick lookup
+	depNames := make(map[string]bool)
+	for _, dep := range dependencies {
+		depNames[dep.Name] = true
+		if dep.Alias != "" {
+			depNames[dep.Alias] = true
+		}
+	}
+
+	// Check each key in the values file
+	for i := 0; i < len(mappingNode.Content); i += 2 {
+		keyNode := mappingNode.Content[i]
+
+		// Check if this key matches a dependency name or alias
+		if !depNames[keyNode.Value] {
+			continue
+		}
+
+		// Check if this key has a @schema annotation with $ref
+		comment := keyNode.HeadComment
+		if comment == "" {
+			continue
+		}
+
+		keyNodeSchema, _, err := GetSchemaFromComment(comment)
+		if err != nil {
+			continue // Ignore parse errors, just skip this key
+		}
+
+		// If this dependency key has a $ref, mark it as overridden
+		if keyNodeSchema.Ref != "" {
+			overrides[keyNode.Value] = true
+		}
+	}
+
+	return overrides, nil
+}
+
