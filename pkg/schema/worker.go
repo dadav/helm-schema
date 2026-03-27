@@ -117,7 +117,13 @@ func Worker(
 			continue
 		}
 
-		result.Schema = *YamlToSchema(valuesPath, &values, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGenerationConfig, nil, nil)
+		schemaResult, err := YamlToSchema(valuesPath, &values, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGenerationConfig, nil, nil)
+		if err != nil {
+			result.Errors = append(result.Errors, err)
+			results <- result
+			continue
+		}
+		result.Schema = *schemaResult
 
 		results <- result
 	}

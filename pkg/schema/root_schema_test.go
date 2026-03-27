@@ -153,7 +153,10 @@ app: myapp`,
 			}
 
 			skipConfig := &SkipAutoGenerationConfig{}
-			schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
+			schema, err := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
+			if err != nil {
+				t.Fatalf("YamlToSchema failed: %v", err)
+			}
 
 			if schema.Title != tt.expectedTitle {
 				t.Errorf("Expected Title=%q, got %q", tt.expectedTitle, schema.Title)
@@ -205,7 +208,10 @@ service:
 	}
 
 	skipConfig := &SkipAutoGenerationConfig{}
-	schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
+	schema, err := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
+	if err != nil {
+		t.Fatalf("YamlToSchema failed: %v", err)
+	}
 
 	// Check root schema
 	if schema.Title != "Root Title" {
@@ -321,7 +327,10 @@ service:
 			}
 
 			skipConfig := &SkipAutoGenerationConfig{}
-			schema := YamlToSchema(valuesPath, &node, false, false, false, true, skipConfig, nil, nil)
+			schema, err := YamlToSchema(valuesPath, &node, false, false, false, true, skipConfig, nil, nil)
+			if err != nil {
+				t.Fatalf("YamlToSchema failed: %v", err)
+			}
 
 			// Check if definitions were propagated
 			if tt.useDefinitionsKeywd {
@@ -479,7 +488,10 @@ foo: bar`,
 			}
 
 			skipConfig := &SkipAutoGenerationConfig{}
-			schema := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
+			schema, err := YamlToSchema("", &node, false, false, false, true, skipConfig, nil, nil)
+			if err != nil {
+				t.Fatalf("YamlToSchema failed: %v", err)
+			}
 
 			switch tt.checkField {
 			case "Ref":

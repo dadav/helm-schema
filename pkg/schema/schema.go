@@ -901,13 +901,13 @@ func YamlToSchema(
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
 	collectedDefs *map[string]*Schema,
-) *Schema {
+) (*Schema, error) {
 	schema := NewSchema("object")
 
 	switch node.Kind {
 	case yaml.DocumentNode:
 		if len(node.Content) != 1 {
-			log.Fatalf("Strange yaml document found:\n%v\n", node.Content[:])
+			return nil, fmt.Errorf("strange yaml document found in file %s: %v", valuesPath, node.Content[:])
 		}
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
@@ -915,7 +915,7 @@ func YamlToSchema(
 		// Create a map to collect definitions from referenced schemas
 		collectedDefsMap := make(map[string]*Schema)
 
-		contentSchema := YamlToSchema(
+		contentSchema, err := YamlToSchema(
 			valuesPath,
 			node.Content[0],
 			keepFullComment,
@@ -926,6 +926,9 @@ func YamlToSchema(
 			&schema.Required.Strings,
 			&collectedDefsMap,
 		)
+		if err != nil {
+			return nil, err
+		}
 
 		// Copy properties from the content schema
 		schema.Properties = contentSchema.Properties
@@ -1050,7 +1053,7 @@ func YamlToSchema(
 			// Try to extract root schema annotations
 			rootSchema, remainingComment, err := GetRootSchemaFromComment(comment)
 			if err != nil {
-				log.Fatalf("Error while parsing root schema comment: %v", err)
+				return nil, fmt.Errorf("error while parsing root schema comment in file %s: %w", valuesPath, err)
 			}
 
 			if rootSchema.HasData {
@@ -1124,7 +1127,7 @@ func YamlToSchema(
 				}
 
 				if err := rootSchema.Validate(); err != nil {
-					log.Fatalf("Error while validating root jsonschema: %v", err)
+					return nil, fmt.Errorf("error while validating root jsonschema in file %s: %w", valuesPath, err)
 				}
 
 				// Update the first key's comment to exclude the root schema annotations
@@ -1148,7 +1151,7 @@ func YamlToSchema(
 
 			keyNodeSchema, description, err := GetSchemaFromComment(comment)
 			if err != nil {
-				log.Fatalf("Error while parsing comment of key %s: %v", keyNode.Value, err)
+				return nil, fmt.Errorf("error while parsing comment of key %s in file %s: %w", keyNode.Value, valuesPath, err)
 			}
 
 			if helmDocsCompatibilityMode {
@@ -1191,16 +1194,17 @@ func YamlToSchema(
 
 			if keyNodeSchema.HasData {
 				if err := keyNodeSchema.Validate(); err != nil {
-					log.Fatalf(
-						"Error while validating jsonschema of key %s: %v",
+					return nil, fmt.Errorf(
+						"error while validating jsonschema of key %s in file %s: %w",
 						keyNode.Value,
+						valuesPath,
 						err,
 					)
 				}
 			} else if !skipAutoGeneration.Type {
 				nodeType, err := typeFromTag(valueNode.Tag)
 				if err != nil {
-					log.Fatal(err)
+					return nil, fmt.Errorf("error getting type from tag in file %s: %w", valuesPath, err)
 				}
 				keyNodeSchema.Type = nodeType
 			}
@@ -1242,7 +1246,7 @@ func YamlToSchema(
 						keyNodeSchema.Properties = make(map[string]*Schema)
 					}
 
-					generatedProperties := YamlToSchema(
+					generatedPropertiesSchema, err := YamlToSchema(
 						valuesPath,
 						valueNode,
 						keepFullComment,
@@ -1252,7 +1256,11 @@ func YamlToSchema(
 						skipAutoGeneration,
 						&keyNodeSchema.Required.Strings,
 						collectedDefs,
-					).Properties
+					)
+					if err != nil {
+						return nil, err
+					}
+					generatedProperties := generatedPropertiesSchema.Properties
 
 					// Process each property
 					for i := 0; i < len(valueNode.Content); i += 2 {
@@ -1264,7 +1272,7 @@ func YamlToSchema(
 						for pattern := range keyNodeSchema.PatternProperties {
 							matched, err := regexp.MatchString(pattern, propKeyNode.Value)
 							if err != nil {
-								log.Fatalf("Invalid pattern '%s' in patternProperties: %v", pattern, err)
+								return nil, fmt.Errorf("invalid pattern '%s' in patternProperties in file %s: %w", pattern, valuesPath, err)
 							}
 							if matched {
 								skipProperty = true
@@ -1285,12 +1293,15 @@ func YamlToSchema(
 						if itemNode.Kind == yaml.ScalarNode {
 							itemNodeType, err := typeFromTag(itemNode.Tag)
 							if err != nil {
-								log.Fatal(err)
+								return nil, fmt.Errorf("error getting type from tag for array item in file %s: %w", valuesPath, err)
 							}
 							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
-							itemSchema := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties, collectedDefs)
+							itemSchema, err := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties, collectedDefs)
+							if err != nil {
+								return nil, err
+							}
 
 							itemSchema.Required.Strings = append(itemSchema.Required.Strings, itemRequiredProperties...)
 
@@ -1316,7 +1327,7 @@ func YamlToSchema(
 		}
 	}
 
-	return schema
+	return schema, nil
 }
 
 func helmDocsTypeToSchemaType(helmDocsType string) (string, error) {
