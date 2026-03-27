@@ -2,7 +2,7 @@ package schema
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +21,7 @@ type Result struct {
 }
 
 func Worker(
-	dryRun, uncomment, addSchemaReference, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal bool,
+	dryRun, uncomment, addSchemaReference, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, annotate bool,
 	valueFileNames []string,
 	skipAutoGenerationConfig *SkipAutoGenerationConfig,
 	outFile string,
@@ -40,6 +40,7 @@ func Worker(
 		}
 
 		chart, err := chart.ReadChart(file)
+		file.Close()
 		if err != nil {
 			result.Errors = append(result.Errors, err)
 			results <- result
@@ -48,29 +49,38 @@ func Worker(
 		result.Chart = &chart
 
 		var valuesPath string
-		var valuesFound bool
+		valuesPaths := []string{}
 		errorsWeMaybeCanIgnore := []error{}
 
 		for _, possibleValueFileName := range valueFileNames {
-			valuesPath = filepath.Join(chartBasePath, possibleValueFileName)
-			_, err := os.Stat(valuesPath)
+			candidatePath := filepath.Join(chartBasePath, possibleValueFileName)
+			_, err := os.Stat(candidatePath)
 			if err != nil {
 				if !os.IsNotExist(err) {
 					errorsWeMaybeCanIgnore = append(errorsWeMaybeCanIgnore, err)
 				}
 				continue
 			}
-			valuesFound = true
-			break
+			valuesPaths = append(valuesPaths, candidatePath)
 		}
 
-		if !valuesFound {
+		if len(valuesPaths) == 0 {
 			result.Errors = append(result.Errors, errorsWeMaybeCanIgnore...)
-			result.Errors = append(result.Errors, errors.New("no values file found"))
+			result.Errors = append(result.Errors, fmt.Errorf("no values file found (tried: %s)", strings.Join(valueFileNames, ", ")))
 			results <- result
 			continue
 		}
+		valuesPath = valuesPaths[0]
 		result.ValuesPath = valuesPath
+
+		// Annotate mode: write @schema annotations into values.yaml and skip schema generation
+		if annotate {
+			if err := AnnotateValuesFile(valuesPath, dryRun); err != nil {
+				result.Errors = append(result.Errors, err)
+			}
+			results <- result
+			continue
+		}
 
 		valuesFile, err := os.Open(valuesPath)
 		if err != nil {
@@ -79,6 +89,7 @@ func Worker(
 			continue
 		}
 		content, err := util.ReadFileAndFixNewline(valuesFile)
+		valuesFile.Close()
 		if err != nil {
 			result.Errors = append(result.Errors, err)
 			results <- result
@@ -86,7 +97,7 @@ func Worker(
 		}
 
 		// Check if we need to add a schema reference
-		if addSchemaReference {
+		if addSchemaReference && !dryRun {
 			schemaRef := `# yaml-language-server: $schema=values.schema.json`
 			if !strings.Contains(string(content), schemaRef) {
 				err = util.PrefixFirstYamlDocument(schemaRef, valuesPath)
@@ -98,32 +109,55 @@ func Worker(
 			}
 		}
 
-		// Optional preprocessing
-		if uncomment {
-			// Remove comments from valid yaml
-			content, err = util.RemoveCommentsFromYaml(bytes.NewReader(content))
+		var mergedValues *yaml.Node
+		for _, currentValuesPath := range valuesPaths {
+			valuesFile, err := os.Open(currentValuesPath)
 			if err != nil {
 				result.Errors = append(result.Errors, err)
-				results <- result
-				continue
+				break
+			}
+
+			currentContent, err := util.ReadFileAndFixNewline(valuesFile)
+			valuesFile.Close()
+			if err != nil {
+				result.Errors = append(result.Errors, err)
+				break
+			}
+
+			if uncomment {
+				// Remove comments from valid yaml before parsing.
+				currentContent, err = util.RemoveCommentsFromYaml(bytes.NewReader(currentContent))
+				if err != nil {
+					result.Errors = append(result.Errors, err)
+					break
+				}
+			}
+
+			var currentValues yaml.Node
+			err = yaml.Unmarshal(currentContent, &currentValues)
+			if err != nil {
+				result.Errors = append(result.Errors, err)
+				break
+			}
+
+			mergedValues, err = mergeValuesDocuments(mergedValues, &currentValues)
+			if err != nil {
+				result.Errors = append(result.Errors, err)
+				break
 			}
 		}
+		if len(result.Errors) > 0 {
+			results <- result
+			continue
+		}
 
-		var values yaml.Node
-		err = yaml.Unmarshal(content, &values)
+		schema, err := YamlToSchema(valuesPath, mergedValues, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGenerationConfig, nil)
 		if err != nil {
 			result.Errors = append(result.Errors, err)
 			results <- result
 			continue
 		}
-
-		schemaResult, err := YamlToSchema(valuesPath, &values, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGenerationConfig, nil, nil)
-		if err != nil {
-			result.Errors = append(result.Errors, err)
-			results <- result
-			continue
-		}
-		result.Schema = *schemaResult
+		result.Schema = *schema
 
 		results <- result
 	}

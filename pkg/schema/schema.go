@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dadav/go-jsonpointer"
 	"github.com/dadav/helm-schema/pkg/util"
 	"github.com/norwoodj/helm-docs/pkg/helm"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -32,13 +33,6 @@ const (
 	CustomAnnotationPrefix = "x-"
 )
 
-// CollectedDefs tracks definitions collected from external schemas
-// and which keyword they should use (definitions vs $defs)
-type CollectedDefs struct {
-	Definitions map[string]*Schema
-	Defs        map[string]*Schema
-}
-
 // YAML tag constants used for type inference
 const (
 	nullTag      = "!!null"
@@ -49,6 +43,13 @@ const (
 	timestampTag = "!!timestamp"
 	arrayTag     = "!!seq"
 	mapTag       = "!!map"
+)
+
+// Precompiled regex patterns for better performance
+var (
+	leadingCommentsRemover = regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
+	helmDocsTagsRemover    = regexp.MustCompile(`(?ms)(\r\n|\r|\n)?\s*@\w+(\s+--\s)?[^\n\r]*`)
+	helmDocsPrefixRemover  = regexp.MustCompile(`(?m)^--\s?`)
 )
 
 // SchemaOrBool represents a JSON Schema field that can be either a boolean or a Schema object
@@ -81,10 +82,12 @@ func (s *BoolOrArrayOfString) UnmarshalJSON(value []byte) error {
 }
 
 func (s *BoolOrArrayOfString) MarshalJSON() ([]byte, error) {
-	if s.Strings == nil {
-		return json.Marshal([]string{})
+	if len(s.Strings) > 0 {
+		return json.Marshal(s.Strings)
 	}
-	return json.Marshal(s.Strings)
+	// Return empty array - the Bool field is only used internally
+	// to signal that the property should be added to parent's required list
+	return json.Marshal([]string{})
 }
 
 func (s *BoolOrArrayOfString) UnmarshalYAML(value *yaml.Node) error {
@@ -171,7 +174,7 @@ func (s *StringOrArrayOfString) Validate() error {
 			t != "array" &&
 			t != "null" &&
 			t != "boolean" {
-			return fmt.Errorf("unsupported type %s", s)
+			return fmt.Errorf("unsupported type %s", t)
 		}
 	}
 	return nil
@@ -250,42 +253,51 @@ type Schema struct {
 	Then                 *Schema                `yaml:"then,omitempty"                 json:"then,omitempty"`
 	PatternProperties    map[string]*Schema     `yaml:"patternProperties,omitempty"    json:"patternProperties,omitempty"`
 	Properties           map[string]*Schema     `yaml:"properties,omitempty"           json:"properties,omitempty"`
-	Defs                 map[string]*Schema     `yaml:"$defs,omitempty"                json:"$defs,omitempty"`
-	Definitions          map[string]*Schema     `yaml:"definitions,omitempty"          json:"definitions,omitempty"`
 	If                   *Schema                `yaml:"if,omitempty"                   json:"if,omitempty"`
-	Minimum              *int                   `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
-	MultipleOf           *int                   `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
-	ExclusiveMaximum     *int                   `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
+	Minimum              *float64               `yaml:"minimum,omitempty"              json:"minimum,omitempty"`
+	MultipleOf           *float64               `yaml:"multipleOf,omitempty"           json:"multipleOf,omitempty"`
+	ExclusiveMaximum     *float64               `yaml:"exclusiveMaximum,omitempty"     json:"exclusiveMaximum,omitempty"`
 	Items                *Schema                `yaml:"items,omitempty"                json:"items,omitempty"`
-	ExclusiveMinimum     *int                   `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
-	Maximum              *int                   `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
+	ExclusiveMinimum     *float64               `yaml:"exclusiveMinimum,omitempty"     json:"exclusiveMinimum,omitempty"`
+	Maximum              *float64               `yaml:"maximum,omitempty"              json:"maximum,omitempty"`
 	Else                 *Schema                `yaml:"else,omitempty"                 json:"else,omitempty"`
 	Pattern              string                 `yaml:"pattern,omitempty"              json:"pattern,omitempty"`
 	Const                interface{}            `yaml:"const,omitempty"                json:"const,omitempty"`
+	ConstFromValue       bool                   `yaml:"const-from-value,omitempty"     json:"-"`
 	Ref                  string                 `yaml:"$ref,omitempty"                 json:"$ref,omitempty"`
 	Schema               string                 `yaml:"$schema,omitempty"              json:"$schema,omitempty"`
 	Id                   string                 `yaml:"$id,omitempty"                  json:"$id,omitempty"`
+	Comment              string                 `yaml:"$comment,omitempty"             json:"$comment,omitempty"`
 	Format               string                 `yaml:"format,omitempty"               json:"format,omitempty"`
 	Description          string                 `yaml:"description,omitempty"          json:"description,omitempty"`
 	Title                string                 `yaml:"title,omitempty"                json:"title,omitempty"`
+	ContentEncoding      string                 `yaml:"contentEncoding,omitempty"      json:"contentEncoding,omitempty"`
+	ContentMediaType     string                 `yaml:"contentMediaType,omitempty"     json:"contentMediaType,omitempty"`
 	Type                 StringOrArrayOfString  `yaml:"type,omitempty"                 json:"type,omitempty"`
 	AnyOf                []*Schema              `yaml:"anyOf,omitempty"                json:"anyOf,omitempty"`
 	AllOf                []*Schema              `yaml:"allOf,omitempty"                json:"allOf,omitempty"`
 	OneOf                []*Schema              `yaml:"oneOf,omitempty"                json:"oneOf,omitempty"`
-	Not                  *Schema                `yaml:"not,omitempty"                json:"not,omitempty"`
+	Not                  *Schema                `yaml:"not,omitempty"                  json:"not,omitempty"`
 	Examples             []interface{}          `yaml:"examples,omitempty"             json:"examples,omitempty"`
 	Enum                 []interface{}          `yaml:"enum,omitempty"                 json:"enum,omitempty"`
+	Definitions          map[string]*Schema     `yaml:"definitions,omitempty"          json:"definitions,omitempty"`
 	HasData              bool                   `yaml:"-"                              json:"-"`
 	Deprecated           bool                   `yaml:"deprecated,omitempty"           json:"deprecated,omitempty"`
-	ReadOnly             bool                   `yaml:"readOnly,omitempty"           json:"readOnly,omitempty"`
-	WriteOnly            bool                   `yaml:"writeOnly,omitempty"           json:"writeOnly,omitempty"`
+	ReadOnly             bool                   `yaml:"readOnly,omitempty"             json:"readOnly,omitempty"`
+	WriteOnly            bool                   `yaml:"writeOnly,omitempty"            json:"writeOnly,omitempty"`
 	Required             BoolOrArrayOfString    `yaml:"required,omitempty"             json:"required,omitempty"`
 	CustomAnnotations    map[string]interface{} `yaml:"-"                              json:",omitempty"`
-	MinLength            *int                   `yaml:"minLength,omitempty"              json:"minLength,omitempty"`
-	MaxLength            *int                   `yaml:"maxLength,omitempty"              json:"maxLength,omitempty"`
-	MinItems             *int                   `yaml:"minItems,omitempty"              json:"minItems,omitempty"`
-	MaxItems             *int                   `yaml:"maxItems,omitempty"              json:"maxItems,omitempty"`
+	MinLength            *int                   `yaml:"minLength,omitempty"            json:"minLength,omitempty"`
+	MaxLength            *int                   `yaml:"maxLength,omitempty"            json:"maxLength,omitempty"`
+	MinItems             *int                   `yaml:"minItems,omitempty"             json:"minItems,omitempty"`
+	MaxItems             *int                   `yaml:"maxItems,omitempty"             json:"maxItems,omitempty"`
 	UniqueItems          bool                   `yaml:"uniqueItems,omitempty"          json:"uniqueItems,omitempty"`
+	Contains             *Schema                `yaml:"contains,omitempty"             json:"contains,omitempty"`
+	AdditionalItems      SchemaOrBool           `yaml:"additionalItems,omitempty"      json:"additionalItems,omitempty"`
+	MinProperties        *int                   `yaml:"minProperties,omitempty"        json:"minProperties,omitempty"`
+	MaxProperties        *int                   `yaml:"maxProperties,omitempty"        json:"maxProperties,omitempty"`
+	PropertyNames        *Schema                `yaml:"propertyNames,omitempty"        json:"propertyNames,omitempty"`
+	Dependencies         map[string]interface{} `yaml:"dependencies,omitempty"         json:"dependencies,omitempty"`
 	constWasSet          bool                   `yaml:"-"                              json:"-"`
 }
 
@@ -366,6 +378,287 @@ func (s *Schema) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// UnmarshalJSON implements custom JSON unmarshaling for Schema objects.
+// It handles both "definitions" (Draft 7) and "$defs" (Draft 2019-09+) keywords,
+// merging them into the Definitions field for consistent Draft 7 output.
+func (s *Schema) UnmarshalJSON(data []byte) error {
+	// Create an alias type to avoid recursion
+	type schemaAlias Schema
+	alias := new(schemaAlias)
+
+	// Unmarshal known fields into alias
+	if err := json.Unmarshal(data, alias); err != nil {
+		return err
+	}
+
+	// Parse raw JSON to check for $defs
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	// Handle $defs (Draft 2019-09+) - merge into Definitions
+	if defsRaw, ok := raw["$defs"]; ok {
+		var defs map[string]*Schema
+		if err := json.Unmarshal(defsRaw, &defs); err != nil {
+			return fmt.Errorf("failed to unmarshal $defs: %w", err)
+		}
+		// Merge $defs into Definitions
+		if alias.Definitions == nil {
+			alias.Definitions = make(map[string]*Schema)
+		}
+		for k, v := range defs {
+			if _, exists := alias.Definitions[k]; !exists {
+				alias.Definitions[k] = v
+			}
+		}
+	}
+
+	// Copy alias to the main struct
+	*s = Schema(*alias)
+
+	// Rewrite $ref paths from $defs to definitions for Draft 7 compatibility
+	s.rewriteDefsRefs()
+
+	return nil
+}
+
+// HoistDefinitions collects all definitions from nested schemas and hoists them
+// to the root level. This is necessary because $ref paths like "#/definitions/X"
+// always reference the document root, not the local schema.
+func (s *Schema) HoistDefinitions() {
+	if s == nil {
+		return
+	}
+
+	// Initialize root definitions if needed
+	if s.Definitions == nil {
+		s.Definitions = make(map[string]*Schema)
+	}
+
+	// Collect definitions from all nested schemas
+	s.collectAndHoistDefinitions(s.Definitions)
+}
+
+// collectAndHoistDefinitions recursively collects definitions from nested schemas
+// and adds them to the root definitions map, then removes them from nested positions.
+func (s *Schema) collectAndHoistDefinitions(rootDefs map[string]*Schema) {
+	if s == nil {
+		return
+	}
+
+	// Process nested properties
+	for _, prop := range s.Properties {
+		prop.collectAndHoistDefinitions(rootDefs)
+		// Hoist definitions from this property
+		if prop.Definitions != nil {
+			for name, def := range prop.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			prop.Definitions = nil // Remove from nested position
+		}
+	}
+
+	// Process pattern properties
+	for _, prop := range s.PatternProperties {
+		prop.collectAndHoistDefinitions(rootDefs)
+		if prop.Definitions != nil {
+			for name, def := range prop.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			prop.Definitions = nil
+		}
+	}
+
+	// Process items
+	if s.Items != nil {
+		s.Items.collectAndHoistDefinitions(rootDefs)
+		if s.Items.Definitions != nil {
+			for name, def := range s.Items.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.Items.Definitions = nil
+		}
+	}
+
+	// Process composition schemas
+	for _, schema := range s.AllOf {
+		schema.collectAndHoistDefinitions(rootDefs)
+		if schema.Definitions != nil {
+			for name, def := range schema.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			schema.Definitions = nil
+		}
+	}
+	for _, schema := range s.AnyOf {
+		schema.collectAndHoistDefinitions(rootDefs)
+		if schema.Definitions != nil {
+			for name, def := range schema.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			schema.Definitions = nil
+		}
+	}
+	for _, schema := range s.OneOf {
+		schema.collectAndHoistDefinitions(rootDefs)
+		if schema.Definitions != nil {
+			for name, def := range schema.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			schema.Definitions = nil
+		}
+	}
+
+	// Process conditional schemas
+	if s.If != nil {
+		s.If.collectAndHoistDefinitions(rootDefs)
+		if s.If.Definitions != nil {
+			for name, def := range s.If.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.If.Definitions = nil
+		}
+	}
+	if s.Then != nil {
+		s.Then.collectAndHoistDefinitions(rootDefs)
+		if s.Then.Definitions != nil {
+			for name, def := range s.Then.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.Then.Definitions = nil
+		}
+	}
+	if s.Else != nil {
+		s.Else.collectAndHoistDefinitions(rootDefs)
+		if s.Else.Definitions != nil {
+			for name, def := range s.Else.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.Else.Definitions = nil
+		}
+	}
+	if s.Not != nil {
+		s.Not.collectAndHoistDefinitions(rootDefs)
+		if s.Not.Definitions != nil {
+			for name, def := range s.Not.Definitions {
+				if _, exists := rootDefs[name]; !exists {
+					rootDefs[name] = def
+				}
+			}
+			s.Not.Definitions = nil
+		}
+	}
+
+	// Process AdditionalProperties when it's a schema
+	if s.AdditionalProperties != nil {
+		switch v := s.AdditionalProperties.(type) {
+		case *Schema:
+			v.collectAndHoistDefinitions(rootDefs)
+			if v.Definitions != nil {
+				for name, def := range v.Definitions {
+					if _, exists := rootDefs[name]; !exists {
+						rootDefs[name] = def
+					}
+				}
+				v.Definitions = nil
+			}
+		}
+	}
+}
+
+// rewriteDefsRefs recursively rewrites $ref paths from "#/$defs/" to "#/definitions/"
+// for JSON Schema Draft 7 compatibility.
+func (s *Schema) rewriteDefsRefs() {
+	if s == nil {
+		return
+	}
+
+	// Rewrite main $ref
+	if strings.HasPrefix(s.Ref, "#/$defs/") {
+		s.Ref = strings.Replace(s.Ref, "#/$defs/", "#/definitions/", 1)
+	}
+
+	// Recursively process all nested schemas
+	for _, prop := range s.Properties {
+		prop.rewriteDefsRefs()
+	}
+	for _, prop := range s.PatternProperties {
+		prop.rewriteDefsRefs()
+	}
+	for _, def := range s.Definitions {
+		def.rewriteDefsRefs()
+	}
+	if s.Items != nil {
+		s.Items.rewriteDefsRefs()
+	}
+	if s.Contains != nil {
+		s.Contains.rewriteDefsRefs()
+	}
+	if s.PropertyNames != nil {
+		s.PropertyNames.rewriteDefsRefs()
+	}
+	if s.If != nil {
+		s.If.rewriteDefsRefs()
+	}
+	if s.Then != nil {
+		s.Then.rewriteDefsRefs()
+	}
+	if s.Else != nil {
+		s.Else.rewriteDefsRefs()
+	}
+	if s.Not != nil {
+		s.Not.rewriteDefsRefs()
+	}
+	for _, schema := range s.AllOf {
+		schema.rewriteDefsRefs()
+	}
+	for _, schema := range s.AnyOf {
+		schema.rewriteDefsRefs()
+	}
+	for _, schema := range s.OneOf {
+		schema.rewriteDefsRefs()
+	}
+
+	// Handle AdditionalProperties and AdditionalItems when they are schemas
+	if s.AdditionalProperties != nil {
+		switch v := s.AdditionalProperties.(type) {
+		case *Schema:
+			v.rewriteDefsRefs()
+		case Schema:
+			v.rewriteDefsRefs()
+			s.AdditionalProperties = v
+		}
+	}
+	if s.AdditionalItems != nil {
+		switch v := s.AdditionalItems.(type) {
+		case *Schema:
+			v.rewriteDefsRefs()
+		case Schema:
+			v.rewriteDefsRefs()
+			s.AdditionalItems = v
+		}
+	}
+}
+
 // Set sets the HasData field to true
 func (s *Schema) Set() {
 	s.HasData = true
@@ -416,11 +709,98 @@ func (s *Schema) DisableRequiredProperties() {
 
 	// Add handling for AdditionalProperties when it's a Schema
 	if s.AdditionalProperties != nil {
-		if subSchema, ok := s.AdditionalProperties.(Schema); ok {
-			subSchema.DisableRequiredProperties()
-			s.AdditionalProperties = subSchema
+		switch v := s.AdditionalProperties.(type) {
+		case *Schema:
+			v.DisableRequiredProperties()
+		case Schema:
+			v.DisableRequiredProperties()
+			s.AdditionalProperties = v
 		}
 	}
+
+	// Handle Contains schema
+	if s.Contains != nil {
+		s.Contains.DisableRequiredProperties()
+	}
+
+	// Handle PropertyNames schema
+	if s.PropertyNames != nil {
+		s.PropertyNames.DisableRequiredProperties()
+	}
+
+	// Handle AdditionalItems when it's a Schema
+	if s.AdditionalItems != nil {
+		switch v := s.AdditionalItems.(type) {
+		case *Schema:
+			v.DisableRequiredProperties()
+		case Schema:
+			v.DisableRequiredProperties()
+			s.AdditionalItems = v
+		}
+	}
+
+	// Handle Definitions
+	for _, v := range s.Definitions {
+		v.DisableRequiredProperties()
+	}
+}
+
+// GetPropertyAtPath navigates a dot-separated path and returns the schema at that location.
+// Returns nil if any part of the path doesn't exist. Empty path segments are skipped.
+func (s *Schema) GetPropertyAtPath(path string) *Schema {
+	if s == nil || path == "" {
+		return s
+	}
+
+	parts := strings.Split(path, ".")
+	current := s
+
+	for _, part := range parts {
+		if part == "" {
+			continue // Skip empty segments (e.g., "foo..bar" or ".foo")
+		}
+		if current.Properties == nil {
+			return nil
+		}
+		prop, ok := current.Properties[part]
+		if !ok {
+			return nil
+		}
+		current = prop
+	}
+
+	return current
+}
+
+// SetPropertyAtPath navigates a dot-separated path and ensures all intermediate schemas exist.
+// Creates intermediate object schemas as needed. Returns the schema at the final path location.
+// If the path is empty, returns the current schema. Empty path segments are skipped.
+func (s *Schema) SetPropertyAtPath(path string) *Schema {
+	if s == nil || path == "" {
+		return s
+	}
+
+	parts := strings.Split(path, ".")
+	current := s
+
+	for _, part := range parts {
+		if part == "" {
+			continue // Skip empty segments (e.g., "foo..bar" or ".foo")
+		}
+		if current.Properties == nil {
+			current.Properties = make(map[string]*Schema)
+		}
+		if _, ok := current.Properties[part]; !ok {
+			current.Properties[part] = &Schema{
+				Type:       []string{"object"},
+				Title:      part,
+				Properties: make(map[string]*Schema),
+			}
+		}
+		current = current.Properties[part]
+	}
+
+	return current
 }
 
 // ToJson converts the data to raw json
@@ -492,6 +872,11 @@ func (s Schema) Validate() error {
 		return err
 	}
 
+	// Validate object constraints
+	if err := s.validateObjectConstraints(); err != nil {
+		return err
+	}
+
 	// Validate nested schemas
 	if err := s.validateNestedSchemas(); err != nil {
 		return err
@@ -515,14 +900,6 @@ func (s Schema) validateSchemaSyntax() error {
 }
 
 func (s Schema) validateTypeConstraints() error {
-	if s.Const != nil && !s.Type.IsEmpty() {
-		return errors.New("cannot use both 'const' and 'type' in the same schema")
-	}
-
-	if s.Enum != nil && !s.Type.IsEmpty() {
-		return errors.New("cannot use both 'enum' and 'type' in the same schema")
-	}
-
 	return nil
 }
 
@@ -547,6 +924,15 @@ func (s Schema) validateNumericConstraints() error {
 		return errors.New("cannot use both maximum and exclusiveMaximum")
 	}
 
+	// Validate min <= max when both are specified
+	if s.Minimum != nil && s.Maximum != nil && *s.Minimum > *s.Maximum {
+		return fmt.Errorf("minimum (%v) cannot be greater than maximum (%v)", *s.Minimum, *s.Maximum)
+	}
+
+	if s.ExclusiveMinimum != nil && s.ExclusiveMaximum != nil && *s.ExclusiveMinimum >= *s.ExclusiveMaximum {
+		return fmt.Errorf("exclusiveMinimum (%v) must be less than exclusiveMaximum (%v)", *s.ExclusiveMinimum, *s.ExclusiveMaximum)
+	}
+
 	return nil
 }
 
@@ -565,14 +951,40 @@ func (s Schema) validateStringConstraints() error {
 		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
 			return fmt.Errorf("pattern can only be used with string type, got %v", s.Type)
 		}
+		// Validate that pattern is a valid regex
+		if _, err := regexp.Compile(s.Pattern); err != nil {
+			return fmt.Errorf("invalid pattern regex: %w", err)
+		}
 	}
 
 	if s.Format != "" && s.Pattern != "" {
 		return errors.New("cannot use both format and pattern in the same schema")
 	}
 
+	// Validate minLength/maxLength are only used with string type
+	if s.MinLength != nil || s.MaxLength != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
+			return fmt.Errorf("minLength/maxLength can only be used with string type, got %v", s.Type)
+		}
+	}
+
 	if s.MaxLength != nil && s.MinLength != nil && *s.MinLength > *s.MaxLength {
 		return fmt.Errorf("minLength (%d) cannot be greater than maxLength (%d)", *s.MinLength, *s.MaxLength)
+	}
+
+	if s.MinLength != nil && *s.MinLength < 0 {
+		return errors.New("minLength must be non-negative")
+	}
+
+	if s.MaxLength != nil && *s.MaxLength < 0 {
+		return errors.New("maxLength must be non-negative")
+	}
+
+	// Validate contentEncoding and contentMediaType are only used with string type
+	if s.ContentEncoding != "" || s.ContentMediaType != "" {
+		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
+			return fmt.Errorf("contentEncoding/contentMediaType can only be used with string type, got %v", s.Type)
+		}
 	}
 
 	return nil
@@ -599,6 +1011,170 @@ func (s Schema) validateArrayConstraints() error {
 		}
 	}
 
+	if s.MinItems != nil && *s.MinItems < 0 {
+		return errors.New("minItems must be non-negative")
+	}
+
+	if s.MaxItems != nil && *s.MaxItems < 0 {
+		return errors.New("maxItems must be non-negative")
+	}
+
+	// Note: uniqueItems is a boolean that doesn't require type validation.
+	// Per JSON Schema spec, keywords are ignored if the type doesn't match.
+
+	// Validate contains
+	if s.Contains != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("array") {
+			return fmt.Errorf("contains can only be used with array type, got %v", s.Type)
+		}
+		if err := s.Contains.Validate(); err != nil {
+			return fmt.Errorf("invalid contains schema: %w", err)
+		}
+	}
+
+	// Validate additionalItems
+	if s.AdditionalItems != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("array") {
+			return fmt.Errorf("additionalItems can only be used with array type, got %v", s.Type)
+		}
+		switch v := s.AdditionalItems.(type) {
+		case *Schema:
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+		case Schema:
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+		case bool:
+			// Boolean is valid
+		case map[string]interface{}:
+			// When unmarshaled from YAML, a schema object becomes map[string]interface{}
+			// Convert and validate it
+			schemaBytes, err := json.Marshal(v)
+			if err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+			var itemsSchema Schema
+			if err := json.Unmarshal(schemaBytes, &itemsSchema); err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+			if err := itemsSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalItems schema: %w", err)
+			}
+		default:
+			return fmt.Errorf("additionalItems must be a boolean or schema, got %T", s.AdditionalItems)
+		}
+	}
+
+	return nil
+}
+
+func (s Schema) validateObjectConstraints() error {
+	// Validate minProperties/maxProperties
+	if s.MinProperties != nil || s.MaxProperties != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("object") {
+			return fmt.Errorf("minProperties/maxProperties can only be used with object type, got %v", s.Type)
+		}
+
+		if s.MinProperties != nil && *s.MinProperties < 0 {
+			return errors.New("minProperties must be non-negative")
+		}
+
+		if s.MaxProperties != nil && *s.MaxProperties < 0 {
+			return errors.New("maxProperties must be non-negative")
+		}
+
+		if s.MinProperties != nil && s.MaxProperties != nil && *s.MaxProperties < *s.MinProperties {
+			return fmt.Errorf("maxProperties (%d) cannot be less than minProperties (%d)", *s.MaxProperties, *s.MinProperties)
+		}
+	}
+
+	// Validate propertyNames
+	if s.PropertyNames != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("object") {
+			return fmt.Errorf("propertyNames can only be used with object type, got %v", s.Type)
+		}
+		if err := s.PropertyNames.Validate(); err != nil {
+			return fmt.Errorf("invalid propertyNames schema: %w", err)
+		}
+	}
+
+	// Validate additionalProperties type check
+	if s.AdditionalProperties != nil {
+		if !s.Type.IsEmpty() && !s.Type.Matches("object") {
+			return fmt.Errorf("additionalProperties can only be used with object type, got %v", s.Type)
+		}
+		switch v := s.AdditionalProperties.(type) {
+		case *Schema:
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+		case Schema:
+			if err := v.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+		case bool:
+			// Boolean is valid
+		case map[string]interface{}:
+			// When unmarshaled from YAML, a schema object becomes map[string]interface{}
+			// Convert and validate it
+			schemaBytes, err := json.Marshal(v)
+			if err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+			var propsSchema Schema
+			if err := json.Unmarshal(schemaBytes, &propsSchema); err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+			if err := propsSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid additionalProperties schema: %w", err)
+			}
+		default:
+			return fmt.Errorf("additionalProperties must be a boolean or schema, got %T", s.AdditionalProperties)
+		}
+	}
+
+	// Validate patternProperties patterns
+	for pattern, patternSchema := range s.PatternProperties {
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("invalid pattern in patternProperties '%s': %w", pattern, err)
+		}
+		if patternSchema != nil {
+			if err := patternSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid schema in patternProperties[%s]: %w", pattern, err)
+			}
+		}
+	}
+
+	// Validate dependencies
+	for depKey, depValue := range s.Dependencies {
+		switch v := depValue.(type) {
+		case []interface{}:
+			// Array of property names - validate they are strings
+			for i, item := range v {
+				if _, ok := item.(string); !ok {
+					return fmt.Errorf("dependencies[%s][%d] must be a string, got %T", depKey, i, item)
+				}
+			}
+		case map[string]interface{}:
+			// Schema - convert and validate
+			schemaBytes, err := json.Marshal(v)
+			if err != nil {
+				return fmt.Errorf("invalid schema in dependencies[%s]: %w", depKey, err)
+			}
+			var depSchema Schema
+			if err := json.Unmarshal(schemaBytes, &depSchema); err != nil {
+				return fmt.Errorf("invalid schema in dependencies[%s]: %w", depKey, err)
+			}
+			if err := depSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid schema in dependencies[%s]: %w", depKey, err)
+			}
+		default:
+			return fmt.Errorf("dependencies[%s] must be an array of strings or a schema, got %T", depKey, depValue)
+		}
+	}
+
 	return nil
 }
 
@@ -617,6 +1193,24 @@ func (s Schema) validateNestedSchemas() error {
 		if schema != nil {
 			if err := schema.Validate(); err != nil {
 				return err
+			}
+		}
+	}
+
+	// Validate definitions
+	for name, defSchema := range s.Definitions {
+		if defSchema != nil {
+			if err := defSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid schema in definitions[%s]: %w", name, err)
+			}
+		}
+	}
+
+	// Validate nested properties
+	for name, propSchema := range s.Properties {
+		if propSchema != nil {
+			if err := propSchema.Validate(); err != nil {
+				return fmt.Errorf("invalid schema in properties[%s]: %w", name, err)
 			}
 		}
 	}
@@ -706,7 +1300,11 @@ func FixRequiredProperties(schema *Schema) error {
 		}
 		if !slices.Contains(schema.Type, "object") {
 			// If .Properties is set, type must be object
-			schema.Type = []string{"object"}
+			if len(schema.Type) == 0 {
+				schema.Type = []string{"object"}
+			} else {
+				schema.Type = append(schema.Type, "object")
+			}
 		}
 	}
 
@@ -727,8 +1325,12 @@ func FixRequiredProperties(schema *Schema) error {
 	}
 
 	if schema.AdditionalProperties != nil {
-		if subSchema, ok := schema.AdditionalProperties.(Schema); ok {
-			FixRequiredProperties(&subSchema)
+		switch v := schema.AdditionalProperties.(type) {
+		case *Schema:
+			FixRequiredProperties(v)
+		case Schema:
+			FixRequiredProperties(&v)
+			schema.AdditionalProperties = v
 		}
 	}
 
@@ -754,6 +1356,109 @@ func FixRequiredProperties(schema *Schema) error {
 		FixRequiredProperties(schema.Not)
 	}
 
+	// Handle Contains schema
+	if schema.Contains != nil {
+		FixRequiredProperties(schema.Contains)
+	}
+
+	// Handle PropertyNames schema
+	if schema.PropertyNames != nil {
+		FixRequiredProperties(schema.PropertyNames)
+	}
+
+	// Handle AdditionalItems when it's a Schema
+	if schema.AdditionalItems != nil {
+		switch v := schema.AdditionalItems.(type) {
+		case *Schema:
+			FixRequiredProperties(v)
+		case Schema:
+			FixRequiredProperties(&v)
+			schema.AdditionalItems = v
+		}
+	}
+
+	// Handle Definitions
+	for _, defSchema := range schema.Definitions {
+		FixRequiredProperties(defSchema)
+	}
+
+	// Handle PatternProperties
+	for _, patternSchema := range schema.PatternProperties {
+		FixRequiredProperties(patternSchema)
+	}
+
+	return nil
+}
+
+// applyRootSchemaProperties copies root-level schema properties from source to target.
+// Used for applying @schema.root annotations.
+func (s *Schema) applyRootSchemaProperties(source *Schema, valuesPath string) error {
+	if source.Title != "" {
+		s.Title = source.Title
+	}
+	if source.Description != "" {
+		s.Description = source.Description
+	}
+	if source.Ref != "" {
+		if err := handleSchemaRefs(source, valuesPath); err != nil {
+			return err
+		}
+		s.Ref = source.Ref
+	}
+	if len(source.Examples) > 0 {
+		s.Examples = source.Examples
+	}
+	if source.Deprecated {
+		s.Deprecated = source.Deprecated
+	}
+	if source.ReadOnly {
+		s.ReadOnly = source.ReadOnly
+	}
+	if source.WriteOnly {
+		s.WriteOnly = source.WriteOnly
+	}
+	if source.AdditionalProperties != nil {
+		s.AdditionalProperties = source.AdditionalProperties
+	}
+	if len(source.Required.Strings) > 0 || source.Required.Bool {
+		s.Required = source.Required
+	}
+	if len(source.PatternProperties) > 0 {
+		if s.PatternProperties == nil {
+			s.PatternProperties = make(map[string]*Schema)
+		}
+		for k, v := range source.PatternProperties {
+			s.PatternProperties[k] = v
+		}
+	}
+	if len(source.Definitions) > 0 {
+		if s.Definitions == nil {
+			s.Definitions = make(map[string]*Schema)
+		}
+		for k, v := range source.Definitions {
+			s.Definitions[k] = v
+		}
+	}
+	if len(source.AllOf) > 0 {
+		s.AllOf = source.AllOf
+	}
+	if len(source.AnyOf) > 0 {
+		s.AnyOf = source.AnyOf
+	}
+	if len(source.OneOf) > 0 {
+		s.OneOf = source.OneOf
+	}
+	if source.Not != nil {
+		s.Not = source.Not
+	}
+	if len(source.CustomAnnotations) > 0 {
+		if s.CustomAnnotations == nil {
+			s.CustomAnnotations = make(map[string]interface{})
+		}
+		for k, v := range source.CustomAnnotations {
+			s.CustomAnnotations[k] = v
+		}
+	}
 	return nil
 }
 
@@ -836,50 +1541,6 @@ func GetSchemaFromComment(comment string) (Schema, string, error) {
 	return result, strings.Join(description, "\n"), nil
 }
 
-// checkUsesDefinitions recursively checks if a schema contains any $ref to #/definitions/
-func checkUsesDefinitions(s *Schema) bool {
-	if s == nil {
-		return false
-	}
-
-	// Check direct $ref
-	if strings.Contains(s.Ref, "#/definitions/") {
-		return true
-	}
-
-	// Check properties
-	for _, prop := range s.Properties {
-		if checkUsesDefinitions(prop) {
-			return true
-		}
-	}
-
-	// Check composition schemas
-	for _, sub := range s.AllOf {
-		if checkUsesDefinitions(sub) {
-			return true
-		}
-	}
-	for _, sub := range s.AnyOf {
-		if checkUsesDefinitions(sub) {
-			return true
-		}
-	}
-	for _, sub := range s.OneOf {
-		if checkUsesDefinitions(sub) {
-			return true
-		}
-	}
-	if checkUsesDefinitions(s.Not) {
-		return true
-	}
-	if checkUsesDefinitions(s.Items) {
-		return true
-	}
-
-	return false
-}
-
 // YamlToSchema recursively parses a YAML node and creates a JSON Schema from it
 // Parameters:
 //   - valuesPath: path to the values file being processed
@@ -887,10 +1548,11 @@ func checkUsesDefinitions(s *Schema) bool {
 //   - keepFullComment: whether to preserve all comment text
 //   - helmDocsCompatibilityMode: whether to parse helm-docs annotations
 //   - dontRemoveHelmDocsPrefix: whether to keep helm-docs prefixes in comments
-//   - dontAddGlobal: whether to skip adding the global property
 //   - skipAutoGeneration: configuration for which fields should not be auto-generated
 //   - parentRequiredProperties: list of required properties to populate in parent
-//   - collectedDefs: map to collect $defs from referenced schemas (only used at document level)
+//
+// Returns:
+//   - The generated Schema and any error encountered during parsing
 func YamlToSchema(
 	valuesPath string,
 	node *yaml.Node,
@@ -900,22 +1562,32 @@ func YamlToSchema(
 	dontAddGlobal bool,
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
-	collectedDefs *map[string]*Schema,
 ) (*Schema, error) {
 	schema := NewSchema("object")
 
 	switch node.Kind {
 	case yaml.DocumentNode:
 		if len(node.Content) != 1 {
-			return nil, fmt.Errorf("strange yaml document found in file %s: %v", valuesPath, node.Content[:])
+			return nil, fmt.Errorf("unexpected yaml document structure: expected 1 content node, got %d", len(node.Content))
 		}
 
 		schema.Schema = "http://json-schema.org/draft-07/schema#"
 
-		// Create a map to collect definitions from referenced schemas
-		collectedDefsMap := make(map[string]*Schema)
+		// Check document-level HeadComment for @schema.root (handles blank-line separated case)
+		if node.HeadComment != "" {
+			if docRootSchema, _, err := GetRootSchemaFromComment(node.HeadComment); err != nil {
+				return nil, fmt.Errorf("error parsing root schema from document comment: %w", err)
+			} else if docRootSchema.HasData {
+				if err := schema.applyRootSchemaProperties(&docRootSchema, valuesPath); err != nil {
+					return nil, fmt.Errorf("error applying root schema from document comment: %w", err)
+				}
+				if err := docRootSchema.Validate(); err != nil {
+					return nil, fmt.Errorf("error validating root schema from document comment: %w", err)
+				}
+			}
+		}
 
-		contentSchema, err := YamlToSchema(
+		childSchema, err := YamlToSchema(
 			valuesPath,
 			node.Content[0],
 			keepFullComment,
@@ -924,99 +1596,16 @@ func YamlToSchema(
 			dontAddGlobal,
 			skipAutoGeneration,
 			&schema.Required.Strings,
-			&collectedDefsMap,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		// Copy properties from the content schema
-		schema.Properties = contentSchema.Properties
+		schema.Properties = childSchema.Properties
 
-		// Merge root-level schema annotations (allOf, anyOf, oneOf, etc.)
-		if len(contentSchema.AllOf) > 0 {
-			schema.AllOf = contentSchema.AllOf
-		}
-		if len(contentSchema.AnyOf) > 0 {
-			schema.AnyOf = contentSchema.AnyOf
-		}
-		if len(contentSchema.OneOf) > 0 {
-			schema.OneOf = contentSchema.OneOf
-		}
-		if contentSchema.Not != nil {
-			schema.Not = contentSchema.Not
-		}
-
-		// Copy root schema annotations from contentSchema
-		if contentSchema.Title != "" {
-			schema.Title = contentSchema.Title
-		}
-		if contentSchema.Description != "" {
-			schema.Description = contentSchema.Description
-		}
-		if contentSchema.AdditionalProperties != nil {
-			schema.AdditionalProperties = contentSchema.AdditionalProperties
-		}
-		if len(contentSchema.CustomAnnotations) > 0 {
-			schema.CustomAnnotations = contentSchema.CustomAnnotations
-		}
-		if contentSchema.Ref != "" {
-			schema.Ref = contentSchema.Ref
-		}
-		if len(contentSchema.Examples) > 0 {
-			schema.Examples = contentSchema.Examples
-		}
-		if contentSchema.Deprecated {
-			schema.Deprecated = contentSchema.Deprecated
-		}
-		if contentSchema.ReadOnly {
-			schema.ReadOnly = contentSchema.ReadOnly
-		}
-		if contentSchema.WriteOnly {
-			schema.WriteOnly = contentSchema.WriteOnly
-		}
-
-		// Merge collected definitions into the root schema
-		if len(collectedDefsMap) > 0 {
-			// Determine which keyword to use based on what the external schema files used
-			// Check if any references use #/definitions/ (vs #/$defs/)
-			usesDefinitions := checkUsesDefinitions(contentSchema)
-
-			if usesDefinitions {
-				// Use "definitions" keyword
-				if schema.Definitions == nil {
-					schema.Definitions = make(map[string]*Schema)
-				}
-				for k, v := range collectedDefsMap {
-					schema.Definitions[k] = v
-				}
-			} else {
-				// Use "$defs" keyword (default for Draft-07+)
-				if schema.Defs == nil {
-					schema.Defs = make(map[string]*Schema)
-				}
-				for k, v := range collectedDefsMap {
-					schema.Defs[k] = v
-				}
-			}
-		}
-
-		// Also copy any definitions/defs from contentSchema
-		if len(contentSchema.Definitions) > 0 {
-			if schema.Definitions == nil {
-				schema.Definitions = make(map[string]*Schema)
-			}
-			for k, v := range contentSchema.Definitions {
-				schema.Definitions[k] = v
-			}
-		}
-		if len(contentSchema.Defs) > 0 {
-			if schema.Defs == nil {
-				schema.Defs = make(map[string]*Schema)
-			}
-			for k, v := range contentSchema.Defs {
-				schema.Defs[k] = v
-			}
+		// Apply root schema properties from child if they were set
+		if err := schema.applyRootSchemaProperties(childSchema, valuesPath); err != nil {
+			return nil, fmt.Errorf("error applying root schema properties from child: %w", err)
 		}
 
 		if _, ok := schema.Properties["global"]; !ok && !dontAddGlobal {
@@ -1044,92 +1633,19 @@ func YamlToSchema(
 		if len(node.Content) > 0 && parentRequiredProperties != nil {
 			firstKeyNode := node.Content[0]
 
-			comment := firstKeyNode.HeadComment
-			if !keepFullComment {
-				leadingCommentsRemover := regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
-				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
-			}
-
-			// Try to extract root schema annotations
-			rootSchema, remainingComment, err := GetRootSchemaFromComment(comment)
+			// Try to extract root schema annotations (adjacent to first key)
+			rootSchema, remainingComment, err := GetRootSchemaFromComment(firstKeyNode.HeadComment)
 			if err != nil {
-				return nil, fmt.Errorf("error while parsing root schema comment in file %s: %w", valuesPath, err)
+				return nil, fmt.Errorf("error parsing root schema comment: %w", err)
 			}
 
 			if rootSchema.HasData {
-				// Apply root schema annotations to the schema being built
-				if rootSchema.Title != "" {
-					schema.Title = rootSchema.Title
+				if err := schema.applyRootSchemaProperties(&rootSchema, valuesPath); err != nil {
+					return nil, fmt.Errorf("error applying root schema: %w", err)
 				}
-				if rootSchema.Description != "" {
-					schema.Description = rootSchema.Description
-				}
-				if rootSchema.Ref != "" {
-					handleSchemaRefs(&rootSchema, valuesPath, collectedDefs)
-					schema.Ref = rootSchema.Ref
-				}
-				if len(rootSchema.Examples) > 0 {
-					schema.Examples = rootSchema.Examples
-				}
-				if rootSchema.Deprecated {
-					schema.Deprecated = rootSchema.Deprecated
-				}
-				if rootSchema.ReadOnly {
-					schema.ReadOnly = rootSchema.ReadOnly
-				}
-				if rootSchema.WriteOnly {
-					schema.WriteOnly = rootSchema.WriteOnly
-				}
-				if rootSchema.AdditionalProperties != nil {
-					schema.AdditionalProperties = rootSchema.AdditionalProperties
-				}
-				if len(rootSchema.CustomAnnotations) > 0 {
-					if schema.CustomAnnotations == nil {
-						schema.CustomAnnotations = make(map[string]interface{})
-					}
-					for k, v := range rootSchema.CustomAnnotations {
-						schema.CustomAnnotations[k] = v
-					}
-				}
-				// Handle composition keywords (allOf, anyOf, oneOf)
-				if len(rootSchema.AllOf) > 0 {
-					schema.AllOf = rootSchema.AllOf
-					// Process $refs in allOf
-					for _, subSchema := range schema.AllOf {
-						if subSchema.Ref != "" {
-							handleSchemaRefs(subSchema, valuesPath, collectedDefs)
-						}
-					}
-				}
-				if len(rootSchema.AnyOf) > 0 {
-					schema.AnyOf = rootSchema.AnyOf
-					// Process $refs in anyOf
-					for _, subSchema := range schema.AnyOf {
-						if subSchema.Ref != "" {
-							handleSchemaRefs(subSchema, valuesPath, collectedDefs)
-						}
-					}
-				}
-				if len(rootSchema.OneOf) > 0 {
-					schema.OneOf = rootSchema.OneOf
-					// Process $refs in oneOf
-					for _, subSchema := range schema.OneOf {
-						if subSchema.Ref != "" {
-							handleSchemaRefs(subSchema, valuesPath, collectedDefs)
-						}
-					}
-				}
-				if rootSchema.Not != nil {
-					schema.Not = rootSchema.Not
-					if schema.Not.Ref != "" {
-						handleSchemaRefs(schema.Not, valuesPath, collectedDefs)
-					}
-				}
-
 				if err := rootSchema.Validate(); err != nil {
-					return nil, fmt.Errorf("error while validating root jsonschema in file %s: %w", valuesPath, err)
+					return nil, fmt.Errorf("error validating root schema: %w", err)
 				}
-
 				// Update the first key's comment to exclude the root schema annotations
 				firstKeyNode.HeadComment = remainingComment
 			}
@@ -1145,13 +1661,12 @@ func YamlToSchema(
 
 			comment := keyNode.HeadComment
 			if !keepFullComment {
-				leadingCommentsRemover := regexp.MustCompile(`(?s)(?m)(?:.*\n{2,})+`)
 				comment = leadingCommentsRemover.ReplaceAllString(comment, "")
 			}
 
 			keyNodeSchema, description, err := GetSchemaFromComment(comment)
 			if err != nil {
-				return nil, fmt.Errorf("error while parsing comment of key %s in file %s: %w", keyNode.Value, valuesPath, err)
+				return nil, fmt.Errorf("error parsing comment of key %s: %w", keyNode.Value, err)
 			}
 
 			if helmDocsCompatibilityMode {
@@ -1178,33 +1693,39 @@ func YamlToSchema(
 			if !dontRemoveHelmDocsPrefix {
 				// remove all lines containing helm-docs @tags, like @ignored, or one of those:
 				// https://github.com/norwoodj/helm-docs/blob/v1.14.2/pkg/helm/chart_info.go#L18-L24
-				helmDocsTagsRemover := regexp.MustCompile(`(?ms)(\r\n|\r|\n)?\s*@\w+(\s+--\s)?[^\n\r]*`)
 				description = helmDocsTagsRemover.ReplaceAllString(description, "")
-
-				prefixRemover := regexp.MustCompile(`(?m)^--\s?`)
-				description = prefixRemover.ReplaceAllString(description, "")
+				description = helmDocsPrefixRemover.ReplaceAllString(description, "")
 			}
 
-			if keyNodeSchema.Ref != "" || len(keyNodeSchema.PatternProperties) > 0 ||
-				len(keyNodeSchema.AllOf) > 0 || len(keyNodeSchema.AnyOf) > 0 ||
-				len(keyNodeSchema.OneOf) > 0 {
-				// Handle $ref in main schema, pattern properties, and composition keywords
-				handleSchemaRefs(&keyNodeSchema, valuesPath, collectedDefs)
+			if keyNodeSchema.Ref != "" || len(keyNodeSchema.PatternProperties) > 0 {
+				// Handle $ref in main schema and pattern properties
+				if err := handleSchemaRefs(&keyNodeSchema, valuesPath); err != nil {
+					return nil, fmt.Errorf("error resolving $ref for key %s: %w", keyNode.Value, err)
+				}
+			}
+
+			if keyNodeSchema.ConstFromValue {
+				if keyNodeSchema.constWasSet {
+					return nil, fmt.Errorf("error validating schema of key %s: const and const-from-value cannot be used together", keyNode.Value)
+				}
+
+				decodedValue, err := decodeNodeValue(valueNode)
+				if err != nil {
+					return nil, fmt.Errorf("error decoding value for const-from-value on key %s: %w", keyNode.Value, err)
+				}
+
+				keyNodeSchema.Const = decodedValue
+				keyNodeSchema.constWasSet = true
 			}
 
 			if keyNodeSchema.HasData {
 				if err := keyNodeSchema.Validate(); err != nil {
-					return nil, fmt.Errorf(
-						"error while validating jsonschema of key %s in file %s: %w",
-						keyNode.Value,
-						valuesPath,
-						err,
-					)
+					return nil, fmt.Errorf("error validating schema of key %s: %w", keyNode.Value, err)
 				}
 			} else if !skipAutoGeneration.Type {
 				nodeType, err := typeFromTag(valueNode.Tag)
 				if err != nil {
-					return nil, fmt.Errorf("error getting type from tag in file %s: %w", valuesPath, err)
+					return nil, fmt.Errorf("error inferring type for key %s: %w", keyNode.Value, err)
 				}
 				keyNodeSchema.Type = nodeType
 			}
@@ -1241,12 +1762,9 @@ func YamlToSchema(
 
 				// If the value is another map and no properties are set, get them from default values
 				if valueNode.Kind == yaml.MappingNode && keyNodeSchema.Properties == nil {
-					// Initialize properties map if needed
-					if keyNodeSchema.Properties == nil {
-						keyNodeSchema.Properties = make(map[string]*Schema)
-					}
+					keyNodeSchema.Properties = make(map[string]*Schema)
 
-					generatedPropertiesSchema, err := YamlToSchema(
+					generatedSchema, err := YamlToSchema(
 						valuesPath,
 						valueNode,
 						keepFullComment,
@@ -1255,24 +1773,22 @@ func YamlToSchema(
 						dontAddGlobal,
 						skipAutoGeneration,
 						&keyNodeSchema.Required.Strings,
-						collectedDefs,
 					)
 					if err != nil {
 						return nil, err
 					}
-					generatedProperties := generatedPropertiesSchema.Properties
+					generatedProperties := generatedSchema.Properties
 
 					// Process each property
 					for i := 0; i < len(valueNode.Content); i += 2 {
 						propKeyNode := valueNode.Content[i]
-						// propValueNode := valueNode.Content[i+1]
 
 						// Check if this specific property matches any pattern
 						skipProperty := false
 						for pattern := range keyNodeSchema.PatternProperties {
 							matched, err := regexp.MatchString(pattern, propKeyNode.Value)
 							if err != nil {
-								return nil, fmt.Errorf("invalid pattern '%s' in patternProperties in file %s: %w", pattern, valuesPath, err)
+								return nil, fmt.Errorf("invalid pattern '%s' in patternProperties: %w", pattern, err)
 							}
 							if matched {
 								skipProperty = true
@@ -1282,7 +1798,9 @@ func YamlToSchema(
 
 						// Only add schema for non-skipped properties
 						if !skipProperty {
-							keyNodeSchema.Properties[propKeyNode.Value] = generatedProperties[propKeyNode.Value]
+							if prop, exists := generatedProperties[propKeyNode.Value]; exists {
+								keyNodeSchema.Properties[propKeyNode.Value] = prop
+							}
 						}
 					}
 				} else if valueNode.Kind == yaml.SequenceNode && keyNodeSchema.Items == nil {
@@ -1293,12 +1811,12 @@ func YamlToSchema(
 						if itemNode.Kind == yaml.ScalarNode {
 							itemNodeType, err := typeFromTag(itemNode.Tag)
 							if err != nil {
-								return nil, fmt.Errorf("error getting type from tag for array item in file %s: %w", valuesPath, err)
+								return nil, fmt.Errorf("error inferring type for array item: %w", err)
 							}
 							seqSchema.AnyOf = append(seqSchema.AnyOf, NewSchema(itemNodeType[0]))
 						} else {
 							itemRequiredProperties := []string{}
-							itemSchema, err := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties, collectedDefs)
+							itemSchema, err := YamlToSchema(valuesPath, itemNode, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGeneration, &itemRequiredProperties)
 							if err != nil {
 								return nil, err
 							}
@@ -1342,6 +1860,8 @@ func helmDocsTypeToSchemaType(helmDocsType string) (string, error) {
 		return "array", nil
 	case "map":
 		return "object", nil
+	case "tpl":
+		return "string", nil
 	case "string", "object":
 		return helmDocsType, nil
 	}
@@ -1390,116 +1910,91 @@ func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
 	return rawValue
 }
 
+// decodeNodeValue converts a yaml.Node into a plain Go value suitable for JSON Schema keywords.
+// Aliases are expanded by yaml.v3 during Decode.
+func decodeNodeValue(node *yaml.Node) (interface{}, error) {
+	var value interface{}
+	if err := node.Decode(&value); err != nil {
+		return nil, err
+	}
+
+	return value, nil
+}
+
 // handleSchemaRefs processes and resolves JSON Schema references ($ref) within a schema.
 // It handles both direct schema references and references within patternProperties.
 // For each reference:
 // - If it's a relative file path, it attempts to load and parse the referenced schema
 // - If it includes a JSON pointer (#/path/to/schema), it extracts the specific schema section
 // - The resolved schema replaces the original reference
-// - Any $defs from the referenced schema are collected in the collectedDefs map for later merging
 //
 // Parameters:
 //   - schema: Pointer to the Schema object containing the references to resolve
 //   - valuesPath: Path to the current values file, used for resolving relative paths
-//   - collectedDefs: Map to collect $defs from referenced schemas (can be nil if not needed)
 //
-// The function will log.Fatal on any critical errors (file not found, invalid JSON, etc.)
-// and log.Debug for non-critical issues (e.g., non-relative paths that may be handled elsewhere)
-func handleSchemaRefs(schema *Schema, valuesPath string, collectedDefs *map[string]*Schema) {
+// Returns:
+//   - An error if the reference cannot be resolved, or nil on success
+func handleSchemaRefs(schema *Schema, valuesPath string) error {
 	// Handle main schema $ref
 	if schema.Ref != "" {
 		refParts := strings.Split(schema.Ref, "#")
-		if relFilePath, err := util.IsRelativeFile(valuesPath, refParts[0]); err == nil {
-			var relSchema Schema
-			file, err := os.Open(relFilePath)
-			if err == nil {
-				defer file.Close()
-				byteValue, _ := io.ReadAll(file)
+		relFilePath, err := util.IsRelativeFile(valuesPath, refParts[0])
+		if err != nil {
+			// Not a relative file path, may be handled elsewhere
+			log.Debug(err)
+			return nil
+		}
 
-				// Extract $defs or definitions from the referenced schema file
-				if collectedDefs != nil {
-					var fullSchema Schema
-					err = json.Unmarshal(byteValue, &fullSchema)
-					if err == nil {
-						if *collectedDefs == nil {
-							*collectedDefs = make(map[string]*Schema)
-						}
-						// Collect from $defs (Draft-07+)
-						for defName, defSchema := range fullSchema.Defs {
-							if existingDef, exists := (*collectedDefs)[defName]; exists {
-								log.Warnf("Definition %s is being overwritten during schema merge", defName)
-								_ = existingDef // avoid unused variable warning
-							}
-							(*collectedDefs)[defName] = defSchema
-						}
-						// Also collect from definitions (Draft-04/06/07)
-						for defName, defSchema := range fullSchema.Definitions {
-							if existingDef, exists := (*collectedDefs)[defName]; exists {
-								log.Warnf("Definition %s is being overwritten during schema merge", defName)
-								_ = existingDef // avoid unused variable warning
-							}
-							(*collectedDefs)[defName] = defSchema
-						}
-					}
-				}
+		var relSchema Schema
+		file, err := os.Open(relFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to open referenced schema file %s: %w", relFilePath, err)
+		}
+		defer file.Close()
 
-				// Convert external file reference to internal reference
-				// e.g., "service-schemas.json#/definitions/baseService" -> "#/definitions/baseService"
-				// or "service-schemas.json#/$defs/baseService" -> "#/$defs/baseService"
-				if len(refParts) > 1 {
-					schema.Ref = "#" + refParts[1]
-					log.Debugf("Converted external $ref to internal: %s", schema.Ref)
-				} else {
-					// No json-pointer - this shouldn't happen for $defs references
-					// but handle it by inlining the schema
-					err = json.Unmarshal(byteValue, &relSchema)
-					if err != nil {
-						log.Fatal(err)
-					}
-					*schema = relSchema
-				}
-				schema.HasData = true
-			} else {
-				log.Fatal(err)
+		byteValue, err := io.ReadAll(file)
+		if err != nil {
+			return fmt.Errorf("failed to read referenced schema file %s: %w", relFilePath, err)
+		}
+
+		if len(refParts) > 1 {
+			// Found json-pointer
+			var obj interface{}
+			if err := json.Unmarshal(byteValue, &obj); err != nil {
+				return fmt.Errorf("failed to unmarshal JSON from %s: %w", relFilePath, err)
+			}
+			jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
+			if err != nil {
+				return fmt.Errorf("failed to resolve JSON pointer %s in %s: %w", refParts[1], relFilePath, err)
+			}
+			jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
+			if err != nil {
+				return fmt.Errorf("failed to marshal JSON pointer result from %s: %w", relFilePath, err)
+			}
+			if err := json.Unmarshal(jsonPointerResultMarshaled, &relSchema); err != nil {
+				return fmt.Errorf("failed to unmarshal JSON pointer result from %s: %w", relFilePath, err)
 			}
 		} else {
-			log.Debug(err)
+			// No json-pointer
+			if err := json.Unmarshal(byteValue, &relSchema); err != nil {
+				return fmt.Errorf("failed to unmarshal schema from %s: %w", relFilePath, err)
+			}
 		}
+		*schema = relSchema
+		schema.HasData = true
 	}
 
 	// Handle $ref in pattern properties
 	if schema.PatternProperties != nil {
 		for pattern, subSchema := range schema.PatternProperties {
 			if subSchema.Ref != "" {
-				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
+				if err := handleSchemaRefs(subSchema, valuesPath); err != nil {
+					return fmt.Errorf("failed to resolve $ref in patternProperties[%s]: %w", pattern, err)
+				}
 				schema.PatternProperties[pattern] = subSchema // Update the original schema in the map
 			}
 		}
 	}
 
-	// Handle $ref in composition keywords (allOf, anyOf, oneOf)
-	if len(schema.AllOf) > 0 {
-		for _, subSchema := range schema.AllOf {
-			if subSchema.Ref != "" {
-				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
-			}
-		}
-	}
-	if len(schema.AnyOf) > 0 {
-		for _, subSchema := range schema.AnyOf {
-			if subSchema.Ref != "" {
-				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
-			}
-		}
-	}
-	if len(schema.OneOf) > 0 {
-		for _, subSchema := range schema.OneOf {
-			if subSchema.Ref != "" {
-				handleSchemaRefs(subSchema, valuesPath, collectedDefs)
-			}
-		}
-	}
-	if schema.Not != nil && schema.Not.Ref != "" {
-		handleSchemaRefs(schema.Not, valuesPath, collectedDefs)
-	}
+	return nil
 }

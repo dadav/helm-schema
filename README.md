@@ -48,6 +48,50 @@ As `helm plugin`:
 helm plugin install https://github.com/dadav/helm-schema
 ```
 
+### Plugin Verification (Helm v4+)
+
+Helm v4 introduced plugin verification for enhanced security. All helm-schema releases are signed with GPG and include provenance files (`.prov`) for verification.
+
+**Automatic Verification (Recommended)**
+
+Helm v4 verifies plugin signatures by default:
+
+```sh
+# Install from a specific release with automatic verification
+helm plugin install https://github.com/dadav/helm-schema/releases/download/vX.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz
+```
+
+**Manual Verification**
+
+Before installing, import the signing key:
+
+```sh
+# Import the public signing key (from file)
+gpg --import signing-key.asc
+
+# Or import by key ID (last 16 hex chars of the fingerprint)
+gpg --keyserver keyserver.ubuntu.com --recv-keys F58707969D0FBFA5
+
+# Verify the imported key fingerprint (expect: 806F 70D2 5667 D42A AE4E 07CE F587 0796 9D0F BFA5)
+gpg --fingerprint F58707969D0FBFA5
+
+# Export from kdx and save in old gpg format
+gpg --export F58707969D0FBFA5 > ~/.gnupg/pubring.gpg
+
+# Install with explicit verification
+helm plugin install https://github.com/dadav/helm-schema/releases/download/vX.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz --verify
+```
+
+**Verify Installed Plugin**
+
+```sh
+# Verify an already installed plugin
+helm plugin verify schema
+```
+
+> [!NOTE]
+> Plugin verification requires Helm v4 or later. If using Helm v3, signatures will be ignored.
+
 ## Usage
 
 ### Pre-commit hook
@@ -78,26 +122,41 @@ The binary has the following options:
 
 ```sh
 Flags:
+  -A, --annotate                               "write inferred @schema type blocks into the first matching values file instead of generating schema"
   -r, --add-schema-reference                   "add reference to schema in values.yaml if not found"
   -w, --allow-circular-dependencies            "allow circular dependencies between charts (will log a warning instead of failing)"
   -a, --append-newline                         "append newline to generated jsonschema at the end of the file"
   -c, --chart-search-root string               "directory to search recursively within for charts (default ".")"
   -i, --dependencies-filter strings            "only generate schema for specified dependencies (comma-separated list of dependency names)"
-  -g, --dont-add-global                        "dont auto add global property"
+  -g, --dont-add-global                        "don't auto add global property"
   -x, --dont-strip-helm-docs-prefix            "disable the removal of the helm-docs prefix (--)"
   -d, --dry-run                                "don't actually create files just print to stdout passed"
   -p, --helm-docs-compatibility-mode           "parse and use helm-docs comments"
   -h, --help                                   "help for helm-schema"
   -s, --keep-full-comment                      "keep the whole leading comment (default: cut at empty line)"
-  -l, --log-level string                       "level of logs that should printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
+  -l, --log-level string                       "level of logs that should be printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
   -n, --no-dependencies                        "don't analyze dependencies"
   -o, --output-file string                     "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
   -m, --skip-dependencies-schema-validation    "skip schema validation for dependencies by setting additionalProperties to true and removing from required"
-  -f, --value-files strings                    "filenames to check for chart values (default [values.yaml])"
+  -f, --value-files strings                    "filenames to look for chart values; schema generation merges all matches in the order provided (default [values.yaml])"
   -k, --skip-auto-generation strings           "skip the auto generation for these fields (default [])"
   -u, --uncomment                              "consider yaml which is commented out"
   -v, --version                                "version for helm-schema"
 ```
+
+For schema generation, `helm-schema` checks each `--value-files` entry for the chart, keeps the ones that exist, and merges them in the order provided. Later files take precedence over earlier files, following Helm's `-f/--values` behavior.
+
+`--annotate` does not merge multiple files. It only annotates the first matching values file.
+
+`--add-schema-reference` also targets the first matching values file.
+
+### Annotate mode
+
+Use `--annotate` to add inferred `# @schema` type blocks to a values file instead of generating `values.schema.json`.
+
+- Keys that already have `@schema` annotations are left unchanged.
+- With `-d, --dry-run`, the annotated file is printed to stdout instead of being written back.
+- When multiple `--value-files` entries are configured, annotate mode uses only the first matching file.
 
 ## Annotations
 
@@ -155,11 +214,11 @@ stage: dev
 | [`enum`](#enum) | Multiple allowed values. Accepts an array of `string` | Takes an `array` |
 | [`const`](#const) | Single allowed value | Takes a `string`|
 | [`examples`](#examples) | Some examples you can provide for the end user | Takes an `array` |
-| [`minimum`](#minimum) | Minimum value. Can't be used with `exclusiveMinimum` | Takes an `integer`. Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
-| [`exclusiveMinimum`](#exclusiveminimum) | Exclusive minimum. Can't be used with `minimum` | Takes an `integer`. Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
-| [`maximum`](#maximum) | Maximum value. Can't be used with `exclusiveMaximum` | Takes an `integer`. Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
-| [`exclusiveMaximum`](#exclusivemaximum) | Exclusive maximum value. Can't be used with `maximum` | Takes an `integer`. Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
-| [`multipleOf`](#multipleof) | The yaml-value must be a multiple of. For example: If you set this to 10, allowed values would be 0, 10, 20, 30... | Takes an `integer` |
+| [`minimum`](#minimum) | Minimum value. Can't be used with `exclusiveMinimum` | Takes a `number` (integer or float). Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
+| [`exclusiveMinimum`](#exclusiveminimum) | Exclusive minimum. Can't be used with `minimum` | Takes a `number` (integer or float). Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
+| [`maximum`](#maximum) | Maximum value. Can't be used with `exclusiveMaximum` | Takes a `number` (integer or float). Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
+| [`exclusiveMaximum`](#exclusivemaximum) | Exclusive maximum value. Can't be used with `maximum` | Takes a `number` (integer or float). Must be bigger than `minimum` or `exclusiveMinimum` (if used) |
+| [`multipleOf`](#multipleof) | The yaml-value must be a multiple of. For example: If you set this to 0.1, allowed values would be 0, 0.1, 0.2... | Takes a `number` (integer or float, must be > 0) |
 | [`additionalProperties`](#additionalproperties) | Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`, which will be filled with keys that the `jsonschema` can't know| Defaults to `false` if the map is not an empty map. Takes a schema or boolean value |
 | [`patternProperties`](#patternproperties) | Contains a map which maps schemas to pattern. If properties match the patterns, the given schema is applied| Takes an `object` |
 | [`anyOf`](#anyof) | Accepts an array of schemas. None or one must apply | Takes an `array` |
@@ -172,6 +231,16 @@ stage: dev
 | [`maxLength`](#maxlength) | Maximum string length. | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
 | [`minItems`](#minItems) | Minimum length of an array. | Takes an `integer`. Must be smaller or equal than `maxItems` (if used) |
 | [`maxItems`](#maxItems) | Maximum length of an array. | Takes an `integer`. Must be greater or equal than `minItems` (if used) |
+| [`contains`](#contains) | Array must contain at least one item matching this schema | Takes a schema `object` |
+| [`additionalItems`](#additionalItems) | Schema for array items beyond those defined in `items` tuple | Takes a `boolean` or schema `object` |
+| [`minProperties`](#minProperties) | Minimum number of properties in an object | Takes an `integer` >= 0 |
+| [`maxProperties`](#maxProperties) | Maximum number of properties in an object | Takes an `integer` >= 0 |
+| [`propertyNames`](#propertyNames) | Schema that all property names must match | Takes a schema `object` |
+| [`dependencies`](#dependencies) | Property dependencies (presence of one property requires others) | Takes an `object` mapping property names to arrays or schemas |
+| [`definitions`](#definitions) | Reusable schema definitions for use with `$ref`. Also supports `$defs` from newer JSON Schema drafts (automatically converted) | Takes an `object` mapping names to schemas |
+| [`$comment`](#comment) | Comment for schema maintainers (not shown to end users) | Takes a `string` |
+| [`contentEncoding`](#contentEncoding) | Encoding for string content (e.g., base64) | Takes a `string` |
+| [`contentMediaType`](#contentMediaType) | MIME type for string content | Takes a `string` |
 
 ## Validation & completion
 
@@ -221,7 +290,7 @@ are used if detected.
 
 ## Dependencies
 
-Per default, `helm-schema` will try to also create the schemas for the dependencies in their respective chart directory. These schemas will be merged as properties in the main schema, but the `requiredProperties` field will be nullified, otherwise you would have to always overwrite all the required fields.
+By default, `helm-schema` will try to also create the schemas for the dependencies in their respective chart directory. These schemas will be merged as properties in the main schema, but the `requiredProperties` field will be nullified, otherwise you would have to always overwrite all the required fields.
 
 If you don't want to generate `jsonschema` for chart dependencies, you can use the `-n, --no-dependencies` option to only generate the `values.schema.json` for your parent chart(s)
 
@@ -561,6 +630,18 @@ Defines a constant value which shouldn't be changed.
 maintainer: maintainer@example.org
 ```
 
+#### `const-from-value`
+
+Copies the YAML value into the generated JSON Schema `const` without duplicating the payload in the annotation block.
+
+```yaml
+# @schema
+# const-from-value: true
+# @schema
+message: |
+  long message with {{ .gotemplate }}
+```
+
 #### `examples`
 
 Provides example values to the user when hovering the key in IDE, or by auto-completion mechanism.
@@ -881,6 +962,163 @@ is the same as
 # minLength: 10
 # @schema
 namespace: foo
+```
+
+#### `contains`
+
+Specifies that an array must contain at least one item matching the given schema.
+
+```yaml
+# @schema
+# type: array
+# contains:
+#   type: string
+#   pattern: ^admin
+# @schema
+# At least one item must be a string starting with 'admin'
+users:
+  - admin-user
+  - regular-user
+```
+
+#### `additionalItems`
+
+Controls validation of array items beyond those specified in an `items` tuple.
+
+```yaml
+# @schema
+# type: array
+# additionalItems: false
+# @schema
+# No additional items allowed beyond what's defined
+fixedArray:
+  - foo
+  - bar
+```
+
+#### `minProperties`
+
+Minimum number of properties an object must have.
+
+```yaml
+# @schema
+# type: object
+# minProperties: 1
+# @schema
+# Object must have at least one property
+config: {}
+```
+
+#### `maxProperties`
+
+Maximum number of properties an object can have.
+
+```yaml
+# @schema
+# type: object
+# maxProperties: 5
+# @schema
+# Object can have at most 5 properties
+labels:
+  app: myapp
+  env: prod
+```
+
+#### `propertyNames`
+
+Schema that all property names in an object must match.
+
+```yaml
+# @schema
+# type: object
+# propertyNames:
+#   pattern: ^[a-z][a-z0-9-]*$
+# @schema
+# All property names must be lowercase with hyphens
+annotations:
+  app-name: myapp
+  version: v1
+```
+
+#### `dependencies`
+
+Define property dependencies - when one property is present, others must be too.
+
+```yaml
+# @schema
+# type: object
+# dependencies:
+#   creditCard: [billingAddress]
+#   billingAddress: [creditCard]
+# @schema
+# If creditCard is present, billingAddress must also be present
+payment:
+  creditCard: "1234-5678"
+  billingAddress: "123 Main St"
+```
+
+#### `definitions`
+
+Define reusable schema fragments that can be referenced with `$ref`.
+
+> [!NOTE]
+> When referencing external JSON Schema files that use `$defs` (JSON Schema Draft 2019-09+), helm-schema automatically converts them to `definitions` and rewrites `$ref` paths from `#/$defs/` to `#/definitions/` for Draft 7 compatibility.
+
+```yaml
+# @schema
+# definitions:
+#   port:
+#     type: integer
+#     minimum: 1
+#     maximum: 65535
+# properties:
+#   httpPort:
+#     $ref: "#/definitions/port"
+#   httpsPort:
+#     $ref: "#/definitions/port"
+# @schema
+service:
+  httpPort: 80
+  httpsPort: 443
+```
+
+#### `$comment`
+
+Add comments for schema maintainers that won't be shown to end users.
+
+```yaml
+# @schema
+# type: string
+# $comment: This field is deprecated and will be removed in v2.0
+# @schema
+legacyField: foo
+```
+
+#### `contentEncoding`
+
+Specify the encoding for string content, such as base64.
+
+```yaml
+# @schema
+# type: string
+# contentEncoding: base64
+# @schema
+# Value is expected to be base64 encoded
+certificate: "LS0tLS1CRUdJTi..."
+```
+
+#### `contentMediaType`
+
+Specify the MIME type for string content.
+
+```yaml
+# @schema
+# type: string
+# contentMediaType: application/json
+# contentEncoding: base64
+# @schema
+# Value is base64-encoded JSON
+configData: "eyJmb28iOiAiYmFyIn0="
 ```
 
 ## License

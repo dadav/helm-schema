@@ -3,4 +3,5 @@
 
 dist/
 .vscode
+
 helm-schema

@@ -4,7 +4,7 @@ name: release
 on:
   push:
     tags:
-      - '*'
+      - "*"
 
 permissions:
   packages: write
@@ -13,25 +13,116 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    env:
+      HAS_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
       - name: Set up Go
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version: ^1.21
-      - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@c93ef52f3d0ddcdcc9bd5447d98d458a11cd4f72 # v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header --verbose
+        env:
+          OUTPUT: RELEASE_NOTES.md
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Import GPG key for plugin signing
+        id: import_gpg
+        if: ${{ env.HAS_GPG_KEY == 'true' }}
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      - uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7
         with:
           distribution: goreleaser
           version: latest
           args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint || '' }}
+      - name: Sign plugin tarballs for Helm v4 verification
+        if: ${{ env.HAS_GPG_KEY == 'true' }}
+        env:
+          GPG_SIGNING_KEY: ${{ steps.import_gpg.outputs.fingerprint }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "Signing plugin tarballs with GPG for Helm v4 verification..."
+          chmod +x sign-plugin.sh
+
+          # Get version from tag
+          VERSION="${GITHUB_REF#refs/tags/}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix if present
+
+          # Sign all tar.gz files (plugin packages)
+          for tarball in dist/*.tar.gz; do
+            if [ -f "$tarball" ]; then
+              echo "Signing: $tarball"
+              ./sign-plugin.sh "$VERSION" "$tarball" "$GPG_SIGNING_KEY" || {
+                echo "Warning: Failed to sign $tarball"
+              }
+            fi
+          done
+
+          # List created .prov files
+          echo "Created provenance files:"
+          ls -lh dist/*.prov || echo "No .prov files created"
+      - name: Set up Helm v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - name: Test signed plugin tarballs with Helm v4
+        if: ${{ env.HAS_GPG_KEY == 'true' }}
+        run: |
+          echo "Testing signed plugin tarballs with Helm..."
+
+          # Create keyring from the public key in the repo
+          KEYRING=$(mktemp)
+          gpg --dearmor < signing-key.asc > "$KEYRING"
+
+          FAILED=0
+          for prov_file in dist/*.prov; do
+            if [ -f "$prov_file" ]; then
+              tarball="${prov_file%.prov}"
+              if [ -f "$tarball" ]; then
+                echo "Verifying: $tarball"
+                helm plugin verify "$tarball" --keyring "$KEYRING" || {
+                  echo "FAIL: Verification failed for $tarball"
+                  cat "$prov_file"
+                  FAILED=1
+                }
+              fi
+            fi
+          done
+
+          if [ "$FAILED" -eq 1 ]; then
+            exit 1
+          fi
+      - name: Update GitHub release notes
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        with:
+          body_path: RELEASE_NOTES.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload provenance files to release
+        if: ${{ env.HAS_GPG_KEY == 'true' }}
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        with:
+          files: dist/*.prov
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

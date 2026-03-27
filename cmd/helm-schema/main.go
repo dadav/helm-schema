@@ -35,6 +35,145 @@ func getDependencyNames(dependencies []*chart.Dependency, dependenciesFilterMap 
 	return depNames
 }
 
+// mergeSchemaProperties merges properties from source to target schema.
+// It skips "global" and properties in the skip map, and returns merged property names.
+// Follows Helm's value coalescing behavior with one exception:
+// - If target has explicit @schema annotation (HasData=true), target wins
+// - If target only has inferred schema (HasData=false), source wins
+func mergeSchemaProperties(
+	target *schema.Schema,
+	source *schema.Schema,
+	skip map[string]bool,
+	sourceName string,
+	targetName string,
+) map[string]bool {
+	merged := make(map[string]bool)
+
+	if source.Properties == nil {
+		return merged
+	}
+
+	if target.Properties == nil {
+		target.Properties = make(map[string]*schema.Schema)
+	}
+
+	for propName, propSchema := range source.Properties {
+		if propName == "global" {
+			continue
+		}
+		if skip != nil && skip[propName] {
+			continue
+		}
+		existingProp, exists := target.Properties[propName]
+		if !exists {
+			target.Properties[propName] = propSchema
+			merged[propName] = true
+		} else if !existingProp.HasData && propSchema.HasData {
+			// Target only has inferred schema, source has explicit annotation - source wins
+			target.Properties[propName] = propSchema
+			merged[propName] = true
+			log.Debugf("Property %s from %s replaces inferred schema in %s", propName, sourceName, targetName)
+		} else if existingProp.HasData {
+			// Target has explicit @schema annotation, keep it
+			log.Debugf("Property %s from %s skipped: %s has explicit @schema annotation", propName, sourceName, targetName)
+		} else {
+			// Both are inferred schemas, keep target (first wins)
+			log.Debugf("Property %s from %s skipped: both schemas are inferred, keeping first", propName, sourceName)
+		}
+	}
+
+	return merged
+}
+
+// processImportValues processes the import-values directive for a dependency.
+// It returns a map of property names that were imported (to track what was handled).
+func processImportValues(
+	parentSchema *schema.Schema,
+	depSchema *schema.Schema,
+	dep *chart.Dependency,
+	parentChartName string,
+) map[string]bool {
+	importedProps := make(map[string]bool)
+
+	if len(dep.ImportValues) == 0 {
+		return importedProps
+	}
+
+	for _, importValue := range dep.ImportValues {
+		var childPath, parentPath string
+
+		switch v := importValue.(type) {
+		case string:
+			// Simple form: "defaults" -> imports from exports.<value> to root
+			childPath = "exports." + v
+			parentPath = ""
+		case map[string]interface{}:
+			// Complex form: {child: "path", parent: "path"}
+			if child, ok := v["child"].(string); ok {
+				childPath = child
+			}
+			if parent, ok := v["parent"].(string); ok {
+				parentPath = parent
+			}
+		case map[interface{}]interface{}:
+			// YAML sometimes produces this type variation
+			if child, ok := v["child"].(string); ok {
+				childPath = child
+			}
+			if parent, ok := v["parent"].(string); ok {
+				parentPath = parent
+			}
+		default:
+			log.Warnf("Unknown import-values format for dependency %s in chart %s: %T", dep.Name, parentChartName, importValue)
+			continue
+		}
+
+		if childPath == "" {
+			log.Warnf("Empty child path in import-values for dependency %s in chart %s", dep.Name, parentChartName)
+			continue
+		}
+
+		// Get the source schema from the dependency
+		sourceSchema := depSchema.GetPropertyAtPath(childPath)
+		if sourceSchema == nil {
+			log.Warnf("Could not find path %q in dependency %s schema for chart %s", childPath, dep.Name, parentChartName)
+			continue
+		}
+
+		if sourceSchema.Properties == nil {
+			log.Warnf("No properties found at path %q in dependency %s for chart %s", childPath, dep.Name, parentChartName)
+			continue
+		}
+
+		// Determine target schema in parent
+		var targetSchema *schema.Schema
+		if parentPath == "" {
+			targetSchema = parentSchema
+		} else {
+			targetSchema = parentSchema.SetPropertyAtPath(parentPath)
+		}
+
+		merged := mergeSchemaProperties(
+			targetSchema,
+			sourceSchema,
+			nil,
+			fmt.Sprintf("import-values of %s", dep.Name),
+			parentChartName,
+		)
+		targetPathDisplay := parentPath
+		if targetPathDisplay == "" {
+			targetPathDisplay = "root"
+		}
+		for k := range merged {
+			importedProps[k] = true
+			log.Debugf("Imported property %q from %s.%s to %s in chart %s",
+				k, dep.Name, childPath, targetPathDisplay, parentChartName)
+		}
+	}
+
+	return importedProps
+}
+
 func exec(cmd *cobra.Command, _ []string) error {
 	configureLogging()
 
@@ -55,6 +194,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	dontAddGlobal := viper.GetBool("dont-add-global")
 	skipDepsSchemaValidation := viper.GetBool("skip-dependencies-schema-validation")
 	allowCircularDeps := viper.GetBool("allow-circular-dependencies")
+	annotate := viper.GetBool("annotate")
 	for _, dep := range dependenciesFilter {
 		dependenciesFilterMap[dep] = true
 	}
@@ -74,7 +214,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	queue := make(chan string)
 	resultsChan := make(chan schema.Result)
 	results := []*schema.Result{}
-	errs := make(chan error)
+	errs := make(chan error, 100) // Buffered to prevent deadlock when errors occur before goroutines start
 	done := make(chan struct{})
 
 	tempDir := searching.SearchArchivesOpenTemp(chartSearchRoot, errs)
@@ -85,10 +225,6 @@ func exec(cmd *cobra.Command, _ []string) error {
 	go searching.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
 
 	wg := sync.WaitGroup{}
-	go func() {
-		wg.Wait()
-		done <- struct{}{}
-	}()
 
 	for i := 0; i < workersCount; i++ {
 		wg.Add(1)
@@ -103,6 +239,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 				helmDocsCompatibilityMode,
 				dontRemoveHelmDocsPrefix,
 				dontAddGlobal,
+				annotate,
 				valueFileNames,
 				skipConfig,
 				outFile,
@@ -112,17 +249,63 @@ func exec(cmd *cobra.Command, _ []string) error {
 		}()
 	}
 
-loop:
+	// Close resultsChan after all workers are done
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+		close(done)
+	}()
+
+	// Collect results and errors until both channels are closed
+	resultsChanOpen := true
+	for resultsChanOpen {
+		select {
+		case err, ok := <-errs:
+			if ok {
+				log.Error(err)
+			}
+		case res, ok := <-resultsChan:
+			if !ok {
+				resultsChanOpen = false
+			} else {
+				results = append(results, &res)
+			}
+		}
+	}
+
+	// Drain any remaining errors
+drainErrors:
 	for {
 		select {
-		case err := <-errs:
-			log.Error(err)
-		case res := <-resultsChan:
-			results = append(results, &res)
-		case <-done:
-			break loop
-
+		case err, ok := <-errs:
+			if ok {
+				log.Error(err)
+			}
+		default:
+			break drainErrors
 		}
+	}
+
+	// In annotate mode, just report errors and return (no schema generation)
+	if annotate {
+		foundErrors := false
+		for _, result := range results {
+			if len(result.Errors) > 0 {
+				foundErrors = true
+				if result.Chart != nil {
+					log.Errorf("Found %d errors while annotating chart %s (%s)", len(result.Errors), result.Chart.Name, result.ChartPath)
+				} else {
+					log.Errorf("Found %d errors while annotating chart %s", len(result.Errors), result.ChartPath)
+				}
+				for _, err := range result.Errors {
+					log.Error(err)
+				}
+			}
+		}
+		if foundErrors {
+			return errors.New("some errors were found")
+		}
+		return nil
 	}
 
 	if !noDeps {
@@ -137,7 +320,7 @@ loop:
 		}
 	}
 
-	conditionsToPatch := make(map[string][]string)
+	conditionsToPatch := make(map[string][][]string)
 	if !noDeps {
 		for _, result := range results {
 			if len(result.Errors) > 0 {
@@ -150,7 +333,16 @@ loop:
 
 				if dep.Condition != "" {
 					conditionKeys := strings.Split(dep.Condition, ".")
-					conditionsToPatch[conditionKeys[0]] = conditionKeys[1:]
+					if len(conditionKeys) == 1 {
+						continue
+					}
+					targetName := conditionKeys[0]
+					if dep.Alias != "" && dep.Alias == conditionKeys[0] {
+						targetName = dep.Name
+					}
+					if targetName != "" {
+						conditionsToPatch[targetName] = append(conditionsToPatch[targetName], conditionKeys[1:])
+					}
 				}
 			}
 		}
@@ -178,33 +370,48 @@ loop:
 			continue
 		}
 
+		if result.Chart == nil {
+			log.Warnf("Skipping result with nil Chart at path: %s", result.ChartPath)
+			continue
+		}
+
 		log.Debugf("Processing result for chart: %s (%s)", result.Chart.Name, result.ChartPath)
 		if !noDeps {
 			chartNameToResult[result.Chart.Name] = result
 			log.Debugf("Stored chart %s in chartNameToResult", result.Chart.Name)
 
-			if patch, ok := conditionsToPatch[result.Chart.Name]; ok {
-				schemaToPatch := &result.Schema
-				lastIndex := len(patch) - 1
-				for i, key := range patch {
-					if alreadyPresentSchema, ok := schemaToPatch.Properties[key]; !ok {
-						log.Debugf(
-							"Patching conditional field \"%s\" into schema of chart %s",
-							key,
-							result.Chart.Name,
-						)
-						if i == lastIndex {
-							schemaToPatch.Properties[key] = &schema.Schema{
-								Type:        []string{"boolean"},
-								Title:       key,
-								Description: "Conditional property used in parent chart",
+			if patches, ok := conditionsToPatch[result.Chart.Name]; ok {
+				for _, patch := range patches {
+					schemaToPatch := &result.Schema
+					lastIndex := len(patch) - 1
+					for i, key := range patch {
+						// Ensure Properties map is initialized
+						if schemaToPatch.Properties == nil {
+							schemaToPatch.Properties = make(map[string]*schema.Schema)
+						}
+						if alreadyPresentSchema, ok := schemaToPatch.Properties[key]; !ok {
+							log.Debugf(
+								"Patching conditional field \"%s\" into schema of chart %s",
+								key,
+								result.Chart.Name,
+							)
+							if i == lastIndex {
+								schemaToPatch.Properties[key] = &schema.Schema{
+									Type:        []string{"boolean"},
+									Title:       key,
+									Description: "Conditional property used in parent chart",
+								}
+							} else {
+								schemaToPatch.Properties[key] = &schema.Schema{
+									Type:       []string{"object"},
+									Title:      key,
+									Properties: make(map[string]*schema.Schema),
+								}
+								schemaToPatch = schemaToPatch.Properties[key]
 							}
 						} else {
-							schemaToPatch.Properties[key] = &schema.Schema{Type: []string{"object"}, Title: key}
-							schemaToPatch = schemaToPatch.Properties[key]
+							schemaToPatch = alreadyPresentSchema
 						}
-					} else {
-						schemaToPatch = alreadyPresentSchema
 					}
 				}
 			}
@@ -215,19 +422,6 @@ loop:
 				}
 
 				if dep.Name != "" {
-					// Determine the property name to use (alias or name)
-					propName := dep.Name
-					if dep.Alias != "" {
-						propName = dep.Alias
-					}
-
-					// Check if the property already exists with custom schema annotations
-					// HasData indicates that the property has custom schema data from annotations (like $ref)
-					if existingProp, exists := result.Schema.Properties[propName]; exists && existingProp.HasData {
-						log.Debugf("Property %s in chart %s has custom schema annotations, skipping dependency schema merge", propName, result.Chart.Name)
-						continue
-					}
-
 					if dependencyResult, ok := chartNameToResult[dep.Name]; ok {
 						log.Debugf(
 							"Found chart of dependency %s (%s)",
@@ -235,71 +429,38 @@ loop:
 							dependencyResult.ChartPath,
 						)
 
-						// Merge $defs from dependency into parent chart's root-level $defs
-						if dependencyResult.Schema.Defs != nil && len(dependencyResult.Schema.Defs) > 0 {
-							if result.Schema.Defs == nil {
-								result.Schema.Defs = make(map[string]*schema.Schema)
-							}
-							for defName, defSchema := range dependencyResult.Schema.Defs {
-								// Check for conflicts and warn if a definition already exists
-								if existingDef, exists := result.Schema.Defs[defName]; exists {
-									log.Warnf("Definition %s from dependency %s conflicts with existing definition in parent chart %s, keeping parent's definition", defName, dep.Name, result.Chart.Name)
-									_ = existingDef // avoid unused variable warning
-								} else {
-									log.Debugf("Merging $defs entry %s from dependency %s into parent chart %s", defName, dep.Name, result.Chart.Name)
-									result.Schema.Defs[defName] = defSchema
-								}
-							}
-						}
-
-						// Also merge definitions (JSON Schema Draft-04/06/07 style)
-						if dependencyResult.Schema.Definitions != nil && len(dependencyResult.Schema.Definitions) > 0 {
-							if result.Schema.Definitions == nil {
-								result.Schema.Definitions = make(map[string]*schema.Schema)
-							}
-							for defName, defSchema := range dependencyResult.Schema.Definitions {
-								// Check for conflicts and warn if a definition already exists
-								if existingDef, exists := result.Schema.Definitions[defName]; exists {
-									log.Warnf("Definition %s from dependency %s conflicts with existing definition in parent chart %s, keeping parent's definition", defName, dep.Name, result.Chart.Name)
-									_ = existingDef // avoid unused variable warning
-								} else {
-									log.Debugf("Merging definitions entry %s from dependency %s into parent chart %s", defName, dep.Name, result.Chart.Name)
-									result.Schema.Definitions[defName] = defSchema
-								}
-							}
-						}
+						// Process import-values first (before regular dependency nesting)
+						importedProps := processImportValues(
+							&result.Schema,
+							&dependencyResult.Schema,
+							dep,
+							result.Chart.Name,
+						)
+						hasImportValues := len(dep.ImportValues) > 0
 
 						// Check if this is a library chart
 						if dependencyResult.Chart.Type == "library" {
 							// For library charts, merge properties directly into parent schema
 							log.Debugf("Merging library chart %s properties into parent chart %s at top level", dep.Name, result.Chart.Name)
-							for propName, propSchema := range dependencyResult.Schema.Properties {
-								// Skip the global property as it's already in the parent
-								if propName == "global" {
-									continue
-								}
-								// Only add if the property doesn't already exist in parent
-								if _, exists := result.Schema.Properties[propName]; !exists {
-									result.Schema.Properties[propName] = propSchema
-								} else {
-									log.Warnf("Property %s from library chart %s already exists in parent chart %s, skipping", propName, dep.Name, result.Chart.Name)
-								}
+							mergeSchemaProperties(
+								&result.Schema,
+								&dependencyResult.Schema,
+								importedProps,
+								fmt.Sprintf("library chart %s", dep.Name),
+								fmt.Sprintf("parent chart %s", result.Chart.Name),
+							)
+						} else if !hasImportValues {
+							// For non-library charts WITHOUT import-values, nest under dependency name
+							// (If import-values is used, user explicitly controls what's imported)
+							depSchema := schema.Schema{
+								Type:        []string{"object"},
+								Title:       dep.Name,
+								Description: dependencyResult.Chart.Description,
+								Properties:  dependencyResult.Schema.Properties,
 							}
-						} else {
-							// For non-library charts, nest under dependency name
-							// Copy the entire dependency schema, not just properties
-							depSchema := dependencyResult.Schema
-
-							// Override top-level fields for nesting
-							depSchema.Title = dep.Name
-							if dependencyResult.Chart.Description != "" {
-								depSchema.Description = dependencyResult.Chart.Description
+							if dep.Condition != "" && !strings.Contains(dep.Condition, ".") {
+								depSchema.Type = []string{"object", "boolean"}
 							}
-							// Ensure type is object for nesting
-							if len(depSchema.Type) == 0 {
-								depSchema.Type = []string{"object"}
-							}
-
 							depSchema.DisableRequiredProperties()
 
 							if dep.Alias != "" {
@@ -335,12 +496,16 @@ loop:
 
 			// Set additionalProperties to true for dependency schemas
 			for _, depName := range depNames {
-				if prop, ok := result.Schema.Properties[depName]; ok {
+				if prop, ok := result.Schema.Properties[depName]; ok && prop != nil {
 					log.Debugf("Setting additionalProperties to true for dependency %s in chart %s", depName, result.Chart.Name)
-					prop.AdditionalProperties = true
+					additionalPropsTrue := true
+					prop.AdditionalProperties = &additionalPropsTrue
 				}
 			}
 		}
+
+		// Hoist all nested definitions to the root level so $ref pointers resolve correctly
+		result.Schema.HoistDefinitions()
 
 		jsonStr, err := result.Schema.ToJson()
 		if err != nil {

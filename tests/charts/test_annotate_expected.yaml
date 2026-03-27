@@ -1,0 +1,64 @@
+# @schema
+# type: integer
+# @schema
+replicaCount: 1
+
+# @schema
+# type: object
+# @schema
+image:
+  # @schema
+  # type: string
+  # @schema
+  repository: nginx
+  # @schema
+  # type: string
+  # @schema
+  pullPolicy: IfNotPresent
+  # @schema
+  # type: string
+  # @schema
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+# @schema
+# type: array
+# @schema
+imagePullSecrets: []
+# @schema
+# type: string
+# @schema
+nameOverride: ""
+
+# @schema
+# type: boolean
+# @schema
+alreadyAnnotated: true
+
+# @schema
+# type: object
+# @schema
+service:
+  # @schema
+  # type: string
+  # @schema
+  type: ClusterIP
+  # @schema
+  # type: integer
+  # @schema
+  port: 80
+
+# @schema
+# type: boolean
+# @schema
+enabled: false
+
+# @schema
+# type: object
+# @schema
+config: {}
+
+# @schema
+# type: "null"
+# @schema
+key:

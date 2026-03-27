@@ -79,6 +79,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 		BoolP("skip-dependencies-schema-validation", "m", false, "skip schema validation for dependencies by setting additionalProperties to true and removing from required")
 	cmd.PersistentFlags().
 		BoolP("allow-circular-dependencies", "w", false, "allow circular dependencies between charts (will log a warning instead of failing)")
+	cmd.PersistentFlags().
+		BoolP("annotate", "A", false, "write inferred @schema annotations into values.yaml files for unannotated keys")
 
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("HELM_SCHEMA")

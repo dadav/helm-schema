@@ -1,0 +1,11 @@
+apiVersion: v2
+name: parent-complex
+version: 1.0.0
+description: A parent chart using complex import-values form
+dependencies:
+  - name: child-complex
+    version: 1.0.0
+    repository: file://../child-complex
+    import-values:
+      - child: data.database
+        parent: db

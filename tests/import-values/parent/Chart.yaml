@@ -1,0 +1,10 @@
+apiVersion: v2
+name: parent
+version: 1.0.0
+description: A parent chart using import-values
+dependencies:
+  - name: child
+    version: 1.0.0
+    repository: file://../child
+    import-values:
+      - defaults

@@ -129,27 +129,32 @@ func SearchFiles(chartSearchRoot, startPath, fileName string, dependenciesFilter
 
 func SearchArchivesOpenTemp(startPath string, errs chan<- error) string {
 	tempDir := ""
+	tempDirCreationFailed := false
 	err := filepath.Walk(startPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			errs <- err
 			return nil
 		}
 		if strings.HasSuffix(info.Name(), ".tgz") || strings.HasSuffix(info.Name(), ".tar.gz") {
-			//extract archived charts from deps
+			// Skip extraction if temp dir creation previously failed
+			if tempDirCreationFailed {
+				return nil
+			}
+			// Extract archived charts from deps
 			if tempDir == "" {
 				relativeDir := filepath.Dir(path)
-				tempDir, err = os.MkdirTemp(relativeDir, "tmp-*")
-				if err != nil {
-					errs <- err
+				var mkdirErr error
+				tempDir, mkdirErr = os.MkdirTemp(relativeDir, "tmp-*")
+				if mkdirErr != nil {
+					errs <- fmt.Errorf("failed to create temp directory for chart extraction: %w", mkdirErr)
+					tempDirCreationFailed = true
 					return nil
 				}
 			}
-			err = extractTGZ(path, tempDir)
-			if err != nil {
-				errs <- err
+			if extractErr := extractTGZ(path, tempDir); extractErr != nil {
+				errs <- fmt.Errorf("failed to extract %s: %w", path, extractErr)
 				return nil
 			}
-
 		}
 		return nil
 	})

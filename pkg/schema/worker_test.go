@@ -130,6 +130,7 @@ key1: value1
 				tt.helmDocsCompatibilityMode,
 				tt.dontRemoveHelmDocsPrefix,
 				tt.dontAddGlobal,
+				false, // annotate
 				tt.valueFileNames,
 				tt.skipAutoGenerationConfig,
 				tt.outFile,
@@ -149,5 +150,126 @@ key1: value1
 				assert.NotNil(t, result.Schema)
 			}
 		})
+	}
+}
+
+func TestWorker_DryRunDoesNotWriteSchemaReference(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	chartPath := filepath.Join(tmpDir, "Chart.yaml")
+	valuesPath := filepath.Join(tmpDir, "values.yaml")
+
+	err := os.WriteFile(chartPath, []byte("apiVersion: v2\nname: test-chart\nversion: 1.0.0\n"), 0o644)
+	assert.NoError(t, err)
+	err = os.WriteFile(valuesPath, []byte("key: value\n"), 0o644)
+	assert.NoError(t, err)
+
+	queue := make(chan string, 1)
+	results := make(chan Result, 1)
+	queue <- chartPath
+	close(queue)
+
+	Worker(
+		true,  // dryRun
+		false, // uncomment
+		true,  // addSchemaReference
+		false, // keepFullComment
+		false, // helmDocsCompatibilityMode
+		false, // dontRemoveHelmDocsPrefix
+		false, // dontAddGlobal
+		false, // annotate
+		[]string{"values.yaml"},
+		&SkipAutoGenerationConfig{},
+		"values.schema.json",
+		queue,
+		results,
+	)
+
+	result := <-results
+	assert.Empty(t, result.Errors)
+
+	updated, err := os.ReadFile(valuesPath)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(updated), "yaml-language-server: $schema=values.schema.json")
+}
+
+func TestWorker_MergesMultipleValuesFilesWithRightmostPrecedence(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	chartPath := filepath.Join(tmpDir, "Chart.yaml")
+	baseValuesPath := filepath.Join(tmpDir, "values.base.yaml")
+	overrideValuesPath := filepath.Join(tmpDir, "values.prod.yaml")
+
+	err := os.WriteFile(chartPath, []byte("apiVersion: v2\nname: test-chart\nversion: 1.0.0\n"), 0o644)
+	assert.NoError(t, err)
+
+	err = os.WriteFile(baseValuesPath, []byte(`
+image:
+  repository: nginx
+  tag: stable
+# @schema
+# description: base replicas
+# @schema
+replicas: 1
+`), 0o644)
+	assert.NoError(t, err)
+
+	err = os.WriteFile(overrideValuesPath, []byte(`
+image:
+  tag: latest
+  pullPolicy: Always
+# @schema
+# description: production replicas
+# @schema
+replicas: "two"
+`), 0o644)
+	assert.NoError(t, err)
+
+	queue := make(chan string, 1)
+	results := make(chan Result, 1)
+	queue <- chartPath
+	close(queue)
+
+	Worker(
+		false, // dryRun
+		false, // uncomment
+		false, // addSchemaReference
+		false, // keepFullComment
+		false, // helmDocsCompatibilityMode
+		false, // dontRemoveHelmDocsPrefix
+		false, // dontAddGlobal
+		false, // annotate
+		[]string{"values.base.yaml", "values.prod.yaml"},
+		&SkipAutoGenerationConfig{},
+		"values.schema.json",
+		queue,
+		results,
+	)
+
+	result := <-results
+	assert.Empty(t, result.Errors)
+
+	replicasSchema := result.Schema.Properties["replicas"]
+	if assert.NotNil(t, replicasSchema) {
+		assert.Equal(t, "production replicas", replicasSchema.Description)
+		assert.Equal(t, "two", replicasSchema.Default)
+	}
+
+	imageSchema := result.Schema.Properties["image"]
+	if assert.NotNil(t, imageSchema) {
+		repositorySchema := imageSchema.Properties["repository"]
+		if assert.NotNil(t, repositorySchema) {
+			assert.Equal(t, "nginx", repositorySchema.Default)
+		}
+
+		tagSchema := imageSchema.Properties["tag"]
+		if assert.NotNil(t, tagSchema) {
+			assert.Equal(t, "latest", tagSchema.Default)
+		}
+
+		pullPolicySchema := imageSchema.Properties["pullPolicy"]
+		if assert.NotNil(t, pullPolicySchema) {
+			assert.Equal(t, "Always", pullPolicySchema.Default)
+		}
 	}
 }

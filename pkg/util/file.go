@@ -68,12 +68,14 @@ func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 	scanner := bufio.NewScanner(reader)
 
 	commentMatcher := regexp.MustCompile(`^\s*#\s*`)
-	commentYamlMapMatcher := regexp.MustCompile(`^(\s*#\s*)[^:]+:.*$`)
+	// Capture indentation and comment marker separately
+	// Group 1: indentation (spaces/tabs before #)
+	// Group 2: comment marker (# and following space)
+	commentYamlMapMatcher := regexp.MustCompile(`^(\s*)(#\s*)([^:]+:.*)$`)
 	schemaMatcher := regexp.MustCompile(`^\s*#\s@schema\s*`)
 
 	var line string
 	var inCode, inSchema bool
-	var codeIndention int
 	var unknownYaml interface{}
 
 	for scanner.Scan() {
@@ -105,10 +107,14 @@ func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 			continue
 		}
 
+		var indentation string
+		var commentMarkerLen int
+
 		// Havent found a potential yaml block yet
 		if !inCode {
 			if matches := commentYamlMapMatcher.FindStringSubmatch(line); matches != nil {
-				codeIndention = len(matches[1])
+				indentation = matches[1]           // Just the leading whitespace
+				commentMarkerLen = len(matches[2]) // Just "# " (typically 2 chars)
 				inCode = true
 			}
 		}
@@ -117,7 +123,7 @@ func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 		if inCode {
 			if commentMatcher.Match([]byte(line)) {
 				// Strip the commet away
-				strippedLine := line[codeIndention:]
+				strippedLine := indentation + line[len(indentation)+commentMarkerLen:]
 				// add it to the already parsed valid yaml
 				appendAndNLStr(&buff, strippedLine)
 				// check if the new block is still valid yaml
@@ -132,6 +138,14 @@ func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 				// its still valid yaml
 				continue
 			}
+
+			// FIX: Line is NOT a comment - we've exited the commented block
+			// Flush the buffer to result and reset state
+			if len(buff) > 0 {
+				appendAndNL(&result, &buff)
+				buff = make([]byte, 0)
+			}
+			inCode = false
 
 			// If the line is not a comment it must be yaml
 			appendAndNLStr(&buff, line)

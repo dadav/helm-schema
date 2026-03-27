@@ -18,15 +18,15 @@ builds:
       - arm
       - arm64
     goarm:
-      - '6'
-      - '7'
+      - "6"
+      - "7"
     goos:
       - linux
       - windows
       - darwin
 
 archives:
-  - format: tar.gz
+  - formats: tar.gz
     # this name template makes the OS and Arch compatible with the results of uname.
     name_template: >-
       {{ .ProjectName }}_
@@ -37,31 +37,56 @@ archives:
     # use zip for windows archives
     format_overrides:
       - goos: windows
-        format: zip
+        formats: zip
+    # Include plugin files for Helm plugin installation
+    files:
+      - plugin.yaml
+      - install-binary.sh
+      - README.md
+      - LICENSE
 
 checksum:
   name_template: checksums.txt
 
-snapshot:
-  version_template: '{{ .Tag }}-next'
+# Sign artifacts for Helm v4 plugin verification
+# The actual .prov file creation happens in GitHub Actions workflow
+# after goreleaser completes, using sign-plugin.sh script
+# Checksum signing is optional and only happens when GPG_FINGERPRINT is set
+signs:
+  - cmd: sh
+    args:
+      - -c
+      - |
+        if [ -n "${GPG_FINGERPRINT}" ]; then
+          gpg --batch --local-user "${GPG_FINGERPRINT}" --output "${signature}" --detach-sign "${artifact}"
+        else
+          echo "Skipping signing: GPG_FINGERPRINT not set"
+          touch "${signature}"
+        fi
+    signature: "${artifact}.sig"
+    artifacts: checksum
 
-dockers:
-  - goos: linux
-    goarch: amd64
-    image_templates:
-      - ghcr.io/dadav/helm-schema:{{ .Tag }}
-      - ghcr.io/dadav/helm-schema:latest
-    build_flag_templates:
-      - --label=org.opencontainers.image.created={{.Date}}
-      - --label=org.opencontainers.image.authors=dadav
-      - --label=org.opencontainers.image.url=https://github.com/dadav/helm-schema
-      - --label=org.opencontainers.image.title={{.ProjectName}}
-      - --label=org.opencontainers.image.revision={{.FullCommit}}
-      - --label=org.opencontainers.image.version={{.Version}}
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+dockers_v2:
+  - images:
+      - "ghcr.io/dadav/helm-schema"
+    tags:
+      - "v{{ .Version }}"
+      - "{{ if .IsNightly }}nightly{{ end }}"
+      - "{{ if not .IsNightly }}latest{{ end }}"
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.authors": dadav
+      "org.opencontainers.image.url": "{{.GitURL}}"
+      "org.opencontainers.image.title": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
 
 changelog:
   sort: asc
   filters:
     include:
-      - '^feat:'
-      - '^fix:'
+      - "^feat:"
+      - "^fix:"

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "appName": {
+      "default": "myapp",
+      "description": "Application name",
+      "title": "appName",
+      "type": "string"
+    },
+    "dbHost": {
+      "default": "localhost",
+      "description": "The database host",
+      "title": "dbHost",
+      "type": "string"
+    },
+    "dbPort": {
+      "default": 5432,
+      "description": "The database port",
+      "title": "dbPort",
+      "type": "integer"
+    },
+    "extraConfig": {
+      "additionalProperties": true,
+      "description": "Extra configuration options",
+      "required": [],
+      "title": "extraConfig",
+      "type": "object"
+    },
+    "global": {
+      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+      "required": [],
+      "title": "global",
+      "type": "object"
+    }
+  },
+  "required": [
+    "extraConfig"
+  ],
+  "type": "object"
+}
