@@ -229,6 +229,37 @@ x-custom-foo: bar
 	assert.Equal(t, schema.CustomAnnotations["x-custom-foo"], "bar")
 }
 
+func TestUnmarshalJSON(t *testing.T) {
+	jsonData := `{
+		"type": "object",
+		"x-custom-foo": "bar",
+		"x-kubernetes-preserve-unknown-fields": true,
+		"const": null,
+		"properties": {
+			"nested": {
+				"type": "string",
+				"x-nested-annotation": 42
+			}
+		}
+	}`
+
+	var schema Schema
+	err := json.Unmarshal([]byte(jsonData), &schema)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assert.Equal(t, schema.Type, StringOrArrayOfString{"object"})
+	assert.Equal(t, schema.CustomAnnotations["x-custom-foo"], "bar")
+	assert.Equal(t, schema.CustomAnnotations["x-kubernetes-preserve-unknown-fields"], true)
+	assert.Equal(t, schema.constWasSet, true)
+
+	// Nested schema should also preserve custom annotations
+	if schema.Properties["nested"] == nil {
+		t.Fatal("expected nested property to exist")
+	}
+	assert.Equal(t, schema.Properties["nested"].CustomAnnotations["x-nested-annotation"], float64(42))
+}
+
 func TestNewDraft7Keywords(t *testing.T) {
 	tests := []struct {
 		name          string

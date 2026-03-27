@@ -1,0 +1,8 @@
+apiVersion: v2
+name: parent
+version: 1.0.0
+description: A parent chart depending on dep-with-schema
+dependencies:
+  - name: dep-with-schema
+    version: 1.0.0
+    repository: file://../dep-with-schema

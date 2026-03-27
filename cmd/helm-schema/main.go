@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -320,6 +321,41 @@ drainErrors:
 		}
 	}
 
+	// For dependency charts with pre-existing schema files, load them instead of
+	// using the worker-generated schema from values.yaml
+	if !noDeps {
+		isDependencyChart := make(map[string]bool)
+		for _, result := range results {
+			if result.Chart == nil || len(result.Errors) > 0 {
+				continue
+			}
+			for _, dep := range result.Chart.Dependencies {
+				isDependencyChart[dep.Name] = true
+			}
+		}
+		for _, result := range results {
+			if result.Chart == nil || len(result.Errors) > 0 {
+				continue
+			}
+			if !isDependencyChart[result.Chart.Name] {
+				continue
+			}
+			schemaPath := filepath.Join(filepath.Dir(result.ChartPath), outFile)
+			schemaData, err := os.ReadFile(schemaPath)
+			if err != nil {
+				continue
+			}
+			var existingSchema schema.Schema
+			if err := json.Unmarshal(schemaData, &existingSchema); err != nil {
+				log.Warnf("Found existing %s for dependency %s but failed to parse it: %s", outFile, result.Chart.Name, err)
+				continue
+			}
+			log.Debugf("Using pre-existing schema for dependency chart %s", result.Chart.Name)
+			result.Schema = existingSchema
+			result.PreExistingSchema = true
+		}
+	}
+
 	conditionsToPatch := make(map[string][][]string)
 	if !noDeps {
 		for _, result := range results {
@@ -506,6 +542,12 @@ drainErrors:
 
 		// Hoist all nested definitions to the root level so $ref pointers resolve correctly
 		result.Schema.HoistDefinitions()
+
+		// Skip writing output for dependency charts with pre-existing schema files
+		if result.PreExistingSchema {
+			log.Debugf("Skipping output for dependency chart %s: using pre-existing schema", result.Chart.Name)
+			continue
+		}
 
 		jsonStr, err := result.Schema.ToJson()
 		if err != nil {

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "appName": {
+      "default": "myapp",
+      "title": "appName",
+      "type": "string"
+    },
+    "dep-with-schema": {
+      "description": "A dependency chart with its own schema",
+      "properties": {
+        "host": {
+          "description": "The hostname to bind to",
+          "format": "hostname",
+          "type": "string",
+          "x-custom-annotation": "preserve-me"
+        },
+        "port": {
+          "description": "The port to listen on",
+          "maximum": 65535,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "dep-with-schema",
+      "type": "object"
+    },
+    "global": {
+      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+      "required": [],
+      "title": "global",
+      "type": "object"
+    }
+  },
+  "required": [
+    "appName"
+  ],
+  "type": "object"
+}
