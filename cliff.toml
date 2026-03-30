@@ -21,7 +21,7 @@ filter_unconventional = true
 split_commits = false
 protect_breaking_commits = false
 filter_commits = true
-tag_pattern = "v[0-9].*"
+tag_pattern = "[0-9].*"
 sort_commits = "oldest"
 commit_parsers = [
   { message = "^feat", group = "Features" },
