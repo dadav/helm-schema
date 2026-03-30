@@ -2,6 +2,7 @@
 ./values.schema.json
 
 dist/
+RELEASE_NOTES.md
 .vscode
 
 helm-schema
