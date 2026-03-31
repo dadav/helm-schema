@@ -1,0 +1,7 @@
+# @schema
+# $ref: config_schema.json
+# @schema
+# -- Config for the worker goes here
+worker:
+  api:
+    url: http://0.0.0.0:8000/

@@ -223,7 +223,38 @@ func exec(cmd *cobra.Command, _ []string) error {
 		defer os.RemoveAll(tempDir)
 	}
 
-	go searching.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
+	// Search for Chart.yaml files in both the chart root and extracted temp directory
+	go func() {
+		queue1 := make(chan string)
+		queue2 := make(chan string)
+
+		go searching.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue1, errs)
+
+		if tempDir != "" {
+			go searching.SearchFiles(chartSearchRoot, tempDir, "Chart.yaml", dependenciesFilterMap, queue2, errs)
+		} else {
+			close(queue2)
+		}
+
+		// Merge results from both searches into the main queue
+		for queue1 != nil || queue2 != nil {
+			select {
+			case path, ok := <-queue1:
+				if !ok {
+					queue1 = nil
+				} else {
+					queue <- path
+				}
+			case path, ok := <-queue2:
+				if !ok {
+					queue2 = nil
+				} else {
+					queue <- path
+				}
+			}
+		}
+		close(queue)
+	}()
 
 	wg := sync.WaitGroup{}
 
@@ -357,6 +388,36 @@ drainErrors:
 	}
 
 	conditionsToPatch := make(map[string][][]string)
+	// Detect subchart schema overrides to skip validation errors
+	overrideInfo := schema.NewOverrideInfo()
+	if !noDeps {
+		for _, result := range results {
+			if result.Chart != nil && len(result.Chart.Dependencies) > 0 {
+				overrides, err := schema.DetectSubchartOverrides(result.ValuesPath, result.Chart.Dependencies)
+				if err != nil {
+					log.Warnf("Failed to detect subchart overrides for %s: %v", result.Chart.Name, err)
+					continue
+				}
+
+				// Mark all overridden subcharts
+				for chartName := range overrides {
+					overrideInfo.MarkOverridden(chartName)
+					log.Debugf("Detected schema override for subchart: %s", chartName)
+				}
+			}
+		}
+
+		// Clear validation errors for overridden subcharts
+		for _, result := range results {
+			if result.Chart != nil && overrideInfo.IsOverridden(result.Chart.Name) {
+				if len(result.Errors) > 0 {
+					log.Infof("Skipping validation errors for subchart %s (overridden by parent with $ref)", result.Chart.Name)
+					result.Errors = nil
+				}
+			}
+		}
+	}
+
 	if !noDeps {
 		for _, result := range results {
 			if len(result.Errors) > 0 {
@@ -498,12 +559,46 @@ drainErrors:
 								depSchema.Type = []string{"object", "boolean"}
 							}
 							depSchema.DisableRequiredProperties()
-
-							if dep.Alias != "" {
-								result.Schema.Properties[dep.Alias] = &depSchema
-							} else {
-								result.Schema.Properties[dep.Name] = &depSchema
+							// Merge subchart definitions into parent root definitions
+							if dependencyResult.Schema.Definitions != nil {
+								if result.Schema.Definitions == nil {
+									result.Schema.Definitions = make(map[string]*schema.Schema)
+								}
+								for defName, defSchema := range dependencyResult.Schema.Definitions {
+									if _, exists := result.Schema.Definitions[defName]; exists {
+										log.Warnf("Definition '%s' from subchart %s conflicts with existing definition in parent %s", defName, dep.Name, result.Chart.Name)
+									} else {
+										result.Schema.Definitions[defName] = defSchema
+										log.Debugf("Merged definition '%s' from subchart %s into parent %s", defName, dep.Name, result.Chart.Name)
+									}
+								}
 							}
+
+							// Only add subchart schema if parent doesn't already have a property for this dependency
+							// (parent may have a $ref override)
+							depKey := dep.Name
+							if dep.Alias != "" {
+								depKey = dep.Alias
+							}
+
+							if existingProp, exists := result.Schema.Properties[depKey]; !exists {
+								result.Schema.Properties[depKey] = &depSchema
+							} else {
+								// Parent has properties for this subchart - merge and allow additional properties
+								log.Debugf("Parent chart %s has property '%s', merging with subchart schema", result.Chart.Name, depKey)
+								mergeSchemaProperties(
+									existingProp,
+									&depSchema,
+									nil,
+									fmt.Sprintf("subchart %s", dep.Name),
+									fmt.Sprintf("parent chart %s property %s", result.Chart.Name, depKey),
+								)
+								// Set additionalProperties to true to allow all subchart properties
+								additionalPropsTrue := true
+								existingProp.AdditionalProperties = &additionalPropsTrue
+								log.Debugf("Set additionalProperties=true for %s in parent %s (has partial values)", depKey, result.Chart.Name)
+							}
+
 						}
 
 					} else {

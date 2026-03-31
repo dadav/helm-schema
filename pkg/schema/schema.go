@@ -1949,6 +1949,7 @@ func decodeNodeValue(node *yaml.Node) (interface{}, error) {
 // - If it's a relative file path, it attempts to load and parse the referenced schema
 // - If it includes a JSON pointer (#/path/to/schema), it extracts the specific schema section
 // - The resolved schema replaces the original reference
+// - If the pointer references a definition, it extracts all definitions from the file
 //
 // Parameters:
 //   - schema: Pointer to the Schema object containing the references to resolve
@@ -1980,11 +1981,38 @@ func handleSchemaRefs(schema *Schema, valuesPath string) error {
 		}
 
 		if len(refParts) > 1 {
-			// Found json-pointer
+			// Found json-pointer - extract definitions but keep the reference
+
+			// First, unmarshal the full schema to extract definitions
+			var fullSchema Schema
+			if err := json.Unmarshal(byteValue, &fullSchema); err != nil {
+				return fmt.Errorf("failed to unmarshal full schema from %s: %w", relFilePath, err)
+			}
+
+			// If the pointer references a definition, extract all definitions and convert to internal ref
+			if strings.HasPrefix(refParts[1], "/definitions/") && fullSchema.Definitions != nil {
+				// Copy all definitions from the source file
+				if schema.Definitions == nil {
+					schema.Definitions = make(map[string]*Schema)
+				}
+				for defName, defSchema := range fullSchema.Definitions {
+					if _, exists := schema.Definitions[defName]; !exists {
+						schema.Definitions[defName] = defSchema
+					}
+				}
+
+				// Convert external reference to internal reference
+				schema.Ref = "#" + refParts[1]
+				schema.HasData = true
+				return nil
+			}
+
+			// For non-definition references, resolve and inline as before
 			var obj interface{}
 			if err := json.Unmarshal(byteValue, &obj); err != nil {
 				return fmt.Errorf("failed to unmarshal JSON from %s: %w", relFilePath, err)
 			}
+
 			jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
 			if err != nil {
 				return fmt.Errorf("failed to resolve JSON pointer %s in %s: %w", refParts[1], relFilePath, err)
