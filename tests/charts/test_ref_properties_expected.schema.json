@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "port": {
+      "maximum": 65535,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "properties": {
+    "global": {
+      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+      "required": [],
+      "title": "global",
+      "type": "object"
+    },
+    "working": {
+      "additionalProperties": false,
+      "properties": {
+        "httpPort": {
+          "$ref": "#/definitions/port",
+          "required": []
+        },
+        "httpsPort": {
+          "$ref": "#/definitions/port",
+          "required": []
+        }
+      },
+      "required": [],
+      "title": "working"
+    }
+  },
+  "required": [],
+  "type": "object"
+}

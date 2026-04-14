@@ -1,0 +1,7 @@
+# @schema
+# definitions:
+#   toplevel:
+#     description: "Top Level"
+# $ref: "#/definitions/toplevel"
+# @schema
+toplevel: 
