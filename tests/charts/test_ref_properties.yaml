@@ -1,0 +1,15 @@
+# @schema
+# definitions:
+#   port:
+#     type: integer
+#     minimum: 1
+#     maximum: 65535
+# properties:
+#   httpPort:
+#     $ref: "#/definitions/port"
+#   httpsPort:
+#     $ref: "#/definitions/port"
+# @schema
+working:
+  httpPort: 80
+  httpsPort: 443
