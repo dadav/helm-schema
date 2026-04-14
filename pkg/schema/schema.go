@@ -1959,8 +1959,12 @@ func decodeNodeValue(node *yaml.Node) (interface{}, error) {
 func handleSchemaRefs(schema *Schema, valuesPath string) error {
 	// Handle main schema $ref
 	if schema.Ref != "" {
-		refParts := strings.Split(schema.Ref, "#")
-		relFilePath, err := util.IsRelativeFile(valuesPath, refParts[0])
+		fileRef, jsonPointer, hasJSONPointer := strings.Cut(schema.Ref, "#")
+		if fileRef == "" {
+			return nil
+		}
+
+		relFilePath, err := util.IsRelativeFile(valuesPath, fileRef)
 		if err != nil {
 			// Not a relative file path, may be handled elsewhere
 			log.Debug(err)
@@ -1979,15 +1983,15 @@ func handleSchemaRefs(schema *Schema, valuesPath string) error {
 			return fmt.Errorf("failed to read referenced schema file %s: %w", relFilePath, err)
 		}
 
-		if len(refParts) > 1 {
+		if hasJSONPointer && jsonPointer != "" {
 			// Found json-pointer
 			var obj interface{}
 			if err := json.Unmarshal(byteValue, &obj); err != nil {
 				return fmt.Errorf("failed to unmarshal JSON from %s: %w", relFilePath, err)
 			}
-			jsonPointerResultRaw, err := jsonpointer.Get(obj, refParts[1])
+			jsonPointerResultRaw, err := jsonpointer.Get(obj, jsonPointer)
 			if err != nil {
-				return fmt.Errorf("failed to resolve JSON pointer %s in %s: %w", refParts[1], relFilePath, err)
+				return fmt.Errorf("failed to resolve JSON pointer %s in %s: %w", jsonPointer, relFilePath, err)
 			}
 			jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
 			if err != nil {
