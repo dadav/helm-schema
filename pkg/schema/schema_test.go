@@ -994,6 +994,52 @@ message: fixed`,
 	}
 }
 
+func TestYamlToSchemaPreservesDocumentLocalRootRef(t *testing.T) {
+	yamlContent := `# @schema
+# definitions:
+#   toplevel:
+#     description: "Top Level"
+# $ref: "#/definitions/toplevel"
+# @schema
+toplevel:
+`
+
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(yamlContent), &node); err != nil {
+		t.Fatalf("Failed to unmarshal YAML: %v", err)
+	}
+
+	skipConfig := &SkipAutoGenerationConfig{}
+	schema, err := YamlToSchema("/tmp/values.yaml", &node, false, false, false, true, skipConfig, nil)
+	if err != nil {
+		t.Fatalf("YamlToSchema failed: %v", err)
+	}
+
+	property, ok := schema.Properties["toplevel"]
+	if !ok {
+		t.Fatal("Expected schema to contain toplevel property")
+	}
+
+	if property.Ref != "#/definitions/toplevel" {
+		t.Fatalf("Expected ref to be preserved, got %q", property.Ref)
+	}
+
+	schema.HoistDefinitions()
+
+	if schema.Definitions == nil {
+		t.Fatal("Expected root definitions to be preserved")
+	}
+
+	definition, ok := schema.Definitions["toplevel"]
+	if !ok {
+		t.Fatal("Expected toplevel definition to be present")
+	}
+
+	if definition.Description != "Top Level" {
+		t.Fatalf("Expected toplevel definition description %q, got %q", "Top Level", definition.Description)
+	}
+}
+
 func TestGetPropertyAtPath(t *testing.T) {
 	// Create a nested schema structure
 	schema := &Schema{
