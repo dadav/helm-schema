@@ -41,5 +41,5 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
-	helm.sh/helm/v3 v3.20.1 // indirect
+	helm.sh/helm/v3 v3.20.2 // indirect
 )
