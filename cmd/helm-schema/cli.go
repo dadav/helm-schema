@@ -61,7 +61,7 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		BoolP("dont-strip-helm-docs-prefix", "x", false, "disable the removal of the helm-docs prefix (--)")
 	cmd.PersistentFlags().
-		BoolP("no-dependencies", "n", false, "don't analyze dependencies")
+		BoolP("no-dependencies", "n", false, "skip dependency charts: don't merge them into parents and don't generate their schemas")
 	cmd.PersistentFlags().
 		BoolP("add-schema-reference", "r", false, "add reference to schema in values.yaml if not found")
 	cmd.PersistentFlags().StringP("log-level", "l", "info", logLevelUsage)
@@ -81,6 +81,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 		BoolP("allow-circular-dependencies", "w", false, "allow circular dependencies between charts (will log a warning instead of failing)")
 	cmd.PersistentFlags().
 		BoolP("annotate", "A", false, "write inferred @schema annotations into values.yaml files for unannotated keys")
+	cmd.PersistentFlags().
+		BoolP("keep-existing-dep-schemas", "K", false, "use dependency charts' pre-existing values.schema.json instead of regenerating from values.yaml")
 
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("HELM_SCHEMA")

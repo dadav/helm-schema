@@ -5,4 +5,5 @@ dist/
 RELEASE_NOTES.md
 .vscode
 
-helm-schema
+/helm-schema
+/tests/helm-schema

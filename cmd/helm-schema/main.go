@@ -196,6 +196,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 	skipDepsSchemaValidation := viper.GetBool("skip-dependencies-schema-validation")
 	allowCircularDeps := viper.GetBool("allow-circular-dependencies")
 	annotate := viper.GetBool("annotate")
+	keepExistingDepSchemas := viper.GetBool("keep-existing-dep-schemas")
 	for _, dep := range dependenciesFilter {
 		dependenciesFilterMap[dep] = true
 	}
@@ -321,18 +322,24 @@ drainErrors:
 		}
 	}
 
-	// For dependency charts with pre-existing schema files, load them instead of
-	// using the worker-generated schema from values.yaml
-	if !noDeps {
-		isDependencyChart := make(map[string]bool)
-		for _, result := range results {
-			if result.Chart == nil || len(result.Errors) > 0 {
-				continue
-			}
-			for _, dep := range result.Chart.Dependencies {
-				isDependencyChart[dep.Name] = true
-			}
+	// Identify charts that are declared as dependencies of some other discovered
+	// chart. Used both to skip dependency charts entirely with --no-dependencies
+	// and to opt-in reuse of a dependency's pre-existing schema.
+	isDependencyChart := make(map[string]bool)
+	for _, result := range results {
+		if result.Chart == nil || len(result.Errors) > 0 {
+			continue
 		}
+		for _, dep := range result.Chart.Dependencies {
+			isDependencyChart[dep.Name] = true
+		}
+	}
+
+	// For dependency charts with pre-existing schema files, load them instead of
+	// using the worker-generated schema from values.yaml. Opt-in via
+	// --keep-existing-dep-schemas; default is to regenerate every discovered
+	// chart's schema.
+	if !noDeps && keepExistingDepSchemas {
 		for _, result := range results {
 			if result.Chart == nil || len(result.Errors) > 0 {
 				continue
@@ -408,6 +415,13 @@ drainErrors:
 
 		if result.Chart == nil {
 			log.Warnf("Skipping result with nil Chart at path: %s", result.ChartPath)
+			continue
+		}
+
+		// With --no-dependencies, skip charts that are declared as dependencies of
+		// some other discovered chart. Top-level charts are still processed.
+		if noDeps && isDependencyChart[result.Chart.Name] {
+			log.Debugf("Skipping dependency chart %s (--no-dependencies)", result.Chart.Name)
 			continue
 		}
 

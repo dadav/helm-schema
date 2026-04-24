@@ -133,9 +133,10 @@ Flags:
   -d, --dry-run                                "don't actually create files just print to stdout passed"
   -p, --helm-docs-compatibility-mode           "parse and use helm-docs comments"
   -h, --help                                   "help for helm-schema"
+  -K, --keep-existing-dep-schemas              "use dependency charts' pre-existing values.schema.json instead of regenerating from values.yaml"
   -s, --keep-full-comment                      "keep the whole leading comment (default: cut at empty line)"
   -l, --log-level string                       "level of logs that should be printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
-  -n, --no-dependencies                        "don't analyze dependencies"
+  -n, --no-dependencies                        "skip dependency charts: don't merge them into parents and don't generate their schemas"
   -o, --output-file string                     "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
   -m, --skip-dependencies-schema-validation    "skip schema validation for dependencies by setting additionalProperties to true and removing from required"
   -f, --value-files strings                    "filenames to look for chart values; schema generation merges all matches in the order provided (default [values.yaml])"
@@ -292,7 +293,22 @@ are used if detected.
 
 By default, `helm-schema` will try to also create the schemas for the dependencies in their respective chart directory. These schemas will be merged as properties in the main schema, but the `requiredProperties` field will be nullified, otherwise you would have to always overwrite all the required fields.
 
-If you don't want to generate `jsonschema` for chart dependencies, you can use the `-n, --no-dependencies` option to only generate the `values.schema.json` for your parent chart(s)
+If you don't want to generate `jsonschema` for chart dependencies, you can use the `-n, --no-dependencies` option to only generate the `values.schema.json` for your parent chart(s). With this flag, any discovered chart that is declared as a dependency of another discovered chart is skipped entirely — the dependency is not merged into its parent and its own `values.schema.json` is not generated.
+
+### Reusing a Dependency's Pre-existing Schema
+
+By default, `helm-schema` regenerates `values.schema.json` for every discovered chart — including subcharts that already ship with a hand-written `values.schema.json`. If you instead want to preserve a dependency's shipped schema (typical for third-party charts pulled via `helm dep up` that carry rich constraints such as `minimum`, `pattern`, `format`, or custom `x-*` annotations), pass `-K, --keep-existing-dep-schemas`:
+
+```sh
+helm-schema -K
+```
+
+When this flag is set:
+
+1. A dependency chart's pre-existing `values.schema.json` is used as-is and merged into the parent.
+2. That dependency's schema file is not overwritten on disk.
+
+Without the flag, every discovered chart's schema is regenerated from its `values.yaml`.
 
 ### Library Charts
 

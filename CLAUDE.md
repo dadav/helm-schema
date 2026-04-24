@@ -274,3 +274,5 @@ Some keywords like `uniqueItems` are accepted on any type per the JSON Schema sp
 6. **Comment parsing**: By default, descriptions are cut at the first empty line in comments. Use `-s` to keep full comments.
 
 7. **Plugin signing**: Signing only works if GPG secrets are configured in GitHub. Missing secrets cause signing steps to be skipped gracefully.
+
+8. **Dependency schema regeneration**: By default every discovered chart — including those declared as dependencies of another chart — has its `values.schema.json` regenerated from its own `values.yaml`. Pass `--keep-existing-dep-schemas` (`-K`) to instead reuse a dependency chart's pre-existing `values.schema.json` (useful for third-party charts pulled via `helm dep up`, so their rich constraints and `x-*` annotations are preserved). When the flag is set, such dependency schemas are merged into the parent as-is and are not overwritten on disk.
