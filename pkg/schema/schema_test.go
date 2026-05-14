@@ -260,6 +260,78 @@ func TestUnmarshalJSON(t *testing.T) {
 	assert.Equal(t, schema.Properties["nested"].CustomAnnotations["x-nested-annotation"], float64(42))
 }
 
+func TestHelmDocsTypeToSchemaType(t *testing.T) {
+	tests := []struct {
+		name        string
+		helmType    string
+		expected    StringOrArrayOfString
+		expectedErr bool
+	}{
+		{
+			name:     "single helm-docs alias",
+			helmType: "int",
+			expected: StringOrArrayOfString{"integer"},
+		},
+		{
+			name:     "multiple comma separated schema types",
+			helmType: "string, object",
+			expected: StringOrArrayOfString{"string", "object"},
+		},
+		{
+			name:     "multiple comma separated helm-docs aliases",
+			helmType: "tpl, map",
+			expected: StringOrArrayOfString{"string", "object"},
+		},
+		{
+			name:        "unsupported type",
+			helmType:    "doesnotexist, string",
+			expectedErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, err := helmDocsTypeToSchemaType(tt.helmType)
+			if tt.expectedErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
+func TestYamlToSchemaHelmDocsMultipleType(t *testing.T) {
+	yamlContent := `# -- (string, object) supports either inline config or a config object
+config: {}
+`
+
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(yamlContent), &node); err != nil {
+		t.Fatalf("Failed to unmarshal YAML: %v", err)
+	}
+
+	skipConfig := &SkipAutoGenerationConfig{}
+	schema, err := YamlToSchema("", &node, false, true, false, true, skipConfig, nil)
+	if err != nil {
+		t.Fatalf("YamlToSchema failed: %v", err)
+	}
+
+	property, ok := schema.Properties["config"]
+	if !ok {
+		t.Fatal("Expected schema to contain config property")
+	}
+
+	assert.Equal(t, StringOrArrayOfString{"string", "object"}, property.Type)
+	assert.Equal(t, "supports either inline config or a config object", property.Description)
+}
+
 func TestNewDraft7Keywords(t *testing.T) {
 	tests := []struct {
 		name          string
