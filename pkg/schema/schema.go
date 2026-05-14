@@ -1707,7 +1707,7 @@ func YamlToSchema(
 						log.Warnln(err)
 					} else {
 						keyNodeSchema.Set()
-						keyNodeSchema.Type = StringOrArrayOfString{helmDocsType}
+						keyNodeSchema.Type = helmDocsType
 					}
 				}
 			}
@@ -1870,7 +1870,23 @@ func YamlToSchema(
 	return schema, nil
 }
 
-func helmDocsTypeToSchemaType(helmDocsType string) (string, error) {
+func helmDocsTypeToSchemaType(helmDocsType string) (StringOrArrayOfString, error) {
+	trimmedType := strings.TrimSpace(helmDocsType)
+
+	var schemaTypes StringOrArrayOfString
+	for _, valueType := range strings.Split(trimmedType, ",") {
+		valueType = strings.TrimSpace(valueType)
+		schemaType, err := helmDocsSingleTypeToSchemaType(valueType)
+		if err != nil {
+			return nil, err
+		}
+		schemaTypes = append(schemaTypes, schemaType)
+	}
+
+	return schemaTypes, schemaTypes.Validate()
+}
+
+func helmDocsSingleTypeToSchemaType(helmDocsType string) (string, error) {
 	switch helmDocsType {
 	case "int":
 		return "integer", nil
