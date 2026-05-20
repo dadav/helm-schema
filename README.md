@@ -284,7 +284,27 @@ foo: []
 ```
 
 If you use `-p`/`--helm-docs-compatibility-mode` flags, the `@default`, `(type)` annotations and helm-docs descriptions
-are used if detected.
+are used if detected. Helm-docs types are converted to JSON Schema types:
+
+| helm-docs type | JSON Schema type |
+|-|-|
+| `bool` | `boolean` |
+| `float` | `number` |
+| `int` | `integer` |
+| `list` | `array` |
+| `map` | `object` |
+| `tpl` | `string` |
+| `object` | `object` |
+| `string` | `string` |
+
+Comma-separated helm-docs type hints are supported and generate a JSON Schema `type` array. This is useful when a value can be represented in more than one way:
+
+```yaml
+# -- (string, object) Inline config string or structured config object.
+config: {}
+```
+
+The generated schema for `config` will allow both `string` and `object`.
 
 > [!NOTE]
 > Make sure to place the `@schema` annotations **before** the actual key description to avoid having it in your `helm-docs` generated table
@@ -415,7 +435,8 @@ name: foo
 # @schema
 enabled: true
 
-# You can define multiple types as an array.
+# You can define multiple types as an array. The same result can be generated
+# from helm-docs comments with -p, for example: # -- (string, integer) ...
 # @schema
 # type: [string, integer]
 # minimum: 0
