@@ -1900,7 +1900,7 @@ func helmDocsSingleTypeToSchemaType(helmDocsType string) (string, error) {
 		return "object", nil
 	case "tpl":
 		return "string", nil
-	case "string", "object":
+	case "string", "object", "null":
 		return helmDocsType, nil
 	}
 
