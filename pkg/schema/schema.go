@@ -163,18 +163,26 @@ func (s *StringOrArrayOfString) MarshalJSON() ([]byte, error) {
 	return json.Marshal([]string(*s))
 }
 
+func ValidateType(t string) error {
+	if t != "" &&
+		t != "object" &&
+		t != "string" &&
+		t != "integer" &&
+		t != "number" &&
+		t != "array" &&
+		t != "null" &&
+		t != "boolean" {
+		return fmt.Errorf("unsupported type %s", t)
+	}
+	return nil
+}
+
 func (s *StringOrArrayOfString) Validate() error {
 	// Check if type is valid
 	for _, t := range []string(*s) {
-		if t != "" &&
-			t != "object" &&
-			t != "string" &&
-			t != "integer" &&
-			t != "number" &&
-			t != "array" &&
-			t != "null" &&
-			t != "boolean" {
-			return fmt.Errorf("unsupported type %s", t)
+		err := ValidateType(t)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1902,9 +1910,14 @@ func helmDocsSingleTypeToSchemaType(helmDocsType string) (string, error) {
 		return "string", nil
 	case "string", "object":
 		return helmDocsType, nil
+	default:
+		err := ValidateType(helmDocsType)
+		if err == nil {
+			return helmDocsType, err
+		} else {
+			return "", fmt.Errorf("cant translate helm-docs type (%s) to helm-schema type", helmDocsType)
+		}
 	}
-
-	return "", fmt.Errorf("cant translate helm-docs type (%s) to helm-schema type", helmDocsType)
 }
 
 // castNodeValueByType attempts to convert a raw string value into the appropriate type based on
