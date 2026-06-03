@@ -37,8 +37,8 @@ type schemaDoc struct {
 }
 
 type schemaProperty struct {
-	Type       stringOrArray              `json:"type"`
-	Properties map[string]schemaProperty  `json:"properties"`
+	Type       stringOrArray             `json:"type"`
+	Properties map[string]schemaProperty `json:"properties"`
 }
 
 func TestExec_ConditionPatchingAndRootConditions(t *testing.T) {

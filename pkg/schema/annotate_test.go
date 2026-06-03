@@ -83,10 +83,10 @@ func TestTypeAnnotationFromTag(t *testing.T) {
 
 func TestCollectInsertionPoints(t *testing.T) {
 	tests := []struct {
-		name       string
-		yaml       string
-		wantCount  int
-		wantTypes  []string
+		name      string
+		yaml      string
+		wantCount int
+		wantTypes []string
 	}{
 		{
 			name:      "simple flat yaml",
