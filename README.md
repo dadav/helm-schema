@@ -288,14 +288,19 @@ are used if detected. Helm-docs types are converted to JSON Schema types:
 
 | helm-docs type | JSON Schema type |
 |-|-|
+| `array` | `array` |
+| `boolean` | `boolean` |
 | `bool` | `boolean` |
 | `float` | `number` |
 | `int` | `integer` |
+| `integer` | `integer` |
 | `list` | `array` |
 | `map` | `object` |
-| `tpl` | `string` |
+| `null` | `null` |
+| `number` | `number` |
 | `object` | `object` |
 | `string` | `string` |
+| `tpl` | `string` |
 
 Comma-separated helm-docs type hints are supported and generate a JSON Schema `type` array. This is useful when a value can be represented in more than one way:
 
