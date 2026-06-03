@@ -1,6 +1,28 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:best-practices", "schedule:earlyMondays"],
-  "bumpVersion": "patch",
-  "prHourlyLimit": 4
+  "prHourlyLimit": 4,
+  "postUpdateOptions": ["gomodTidy"],
+  "platformAutomerge": true,
+  "packageRules": [
+    {
+      "description": "Group and automerge GitHub Actions digest/minor/patch updates",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest", "pin", "minor", "patch"],
+      "groupName": "github-actions",
+      "automerge": true
+    },
+    {
+      "description": "Automerge Docker base image digest and patch updates",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["digest", "pin", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Automerge Go module minor and patch updates",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    }
+  ]
 }
