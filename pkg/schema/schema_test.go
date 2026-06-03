@@ -278,6 +278,11 @@ func TestHelmDocsTypeToSchemaType(t *testing.T) {
 			expected: StringOrArrayOfString{"string", "object"},
 		},
 		{
+			name:     "all direct JSON Schema types",
+			helmType: "null, boolean, object, array, number, string, integer",
+			expected: StringOrArrayOfString{"null", "boolean", "object", "array", "number", "string", "integer"},
+		},
+		{
 			name:     "multiple comma separated helm-docs aliases",
 			helmType: "tpl, map",
 			expected: StringOrArrayOfString{"string", "object"},
