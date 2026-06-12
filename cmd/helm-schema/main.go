@@ -502,6 +502,9 @@ drainErrors:
 						} else if !hasImportValues {
 							// For non-library charts WITHOUT import-values, nest under dependency name
 							// (If import-values is used, user explicitly controls what's imported)
+							// depSchema shares dependencyResult's Properties map; DisableRequiredProperties
+							// mutates it. Safe only because TopoSort writes each dependency's own schema
+							// file before any parent reaches this point, and the mutation is idempotent.
 							depSchema := schema.Schema{
 								Type:        []string{"object"},
 								Title:       dep.Name,
@@ -513,6 +516,9 @@ drainErrors:
 							}
 							depSchema.DisableRequiredProperties()
 
+							if result.Schema.Properties == nil {
+								result.Schema.Properties = make(map[string]*schema.Schema)
+							}
 							if dep.Alias != "" {
 								result.Schema.Properties[dep.Alias] = &depSchema
 							} else {
@@ -565,7 +571,8 @@ drainErrors:
 
 		jsonStr, err := result.Schema.ToJson()
 		if err != nil {
-			log.Error(err)
+			log.Errorf("Failed to serialize schema for chart %s: %s", result.Chart.Name, err)
+			foundErrors = true
 			continue
 		}
 
@@ -583,7 +590,8 @@ drainErrors:
 		} else {
 			chartBasePath := filepath.Dir(result.ChartPath)
 			if err := os.WriteFile(filepath.Join(chartBasePath, outFile), jsonStr, 0o644); err != nil {
-				errs <- err
+				log.Errorf("Failed to write %s for chart %s: %s", outFile, result.Chart.Name, err)
+				foundErrors = true
 				continue
 			}
 		}

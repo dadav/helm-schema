@@ -71,14 +71,16 @@ func NewBoolOrArrayOfString(arr []string, b bool) BoolOrArrayOfString {
 
 func (s *BoolOrArrayOfString) UnmarshalJSON(value []byte) error {
 	var multi []string
-	var single bool
-
 	if err := json.Unmarshal(value, &multi); err == nil {
 		s.Strings = multi
-	} else if err := json.Unmarshal(value, &single); err == nil {
-		s.Bool = single
+		return nil
 	}
-	return nil
+	var single bool
+	if err := json.Unmarshal(value, &single); err == nil {
+		s.Bool = single
+		return nil
+	}
+	return fmt.Errorf("required must be a boolean or an array of strings, got: %s", string(value))
 }
 
 func (s *BoolOrArrayOfString) MarshalJSON() ([]byte, error) {
@@ -1593,6 +1595,9 @@ func YamlToSchema(
 	skipAutoGeneration *SkipAutoGenerationConfig,
 	parentRequiredProperties *[]string,
 ) (*Schema, error) {
+	if skipAutoGeneration == nil {
+		skipAutoGeneration = &SkipAutoGenerationConfig{}
+	}
 	schema := NewSchema("object")
 
 	switch node.Kind {
