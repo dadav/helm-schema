@@ -574,3 +574,110 @@ inside: 2
 	assert.True(t, os.IsNotExist(err),
 		"dependency chart schema must not be generated with --no-dependencies (issue #215)")
 }
+
+// setStandardViper applies the default viper config block used by exec().
+func setStandardViper(tmpDir string) {
+	viper.Reset()
+	viper.Set("chart-search-root", tmpDir)
+	viper.Set("dry-run", false)
+	viper.Set("no-dependencies", false)
+	viper.Set("add-schema-reference", false)
+	viper.Set("keep-full-comment", false)
+	viper.Set("helm-docs-compatibility-mode", false)
+	viper.Set("uncomment", false)
+	viper.Set("output-file", "values.schema.json")
+	viper.Set("dont-strip-helm-docs-prefix", false)
+	viper.Set("append-newline", false)
+	viper.Set("dependencies-filter", []string{})
+	viper.Set("dont-add-global", false)
+	viper.Set("skip-dependencies-schema-validation", false)
+	viper.Set("allow-circular-dependencies", false)
+	viper.Set("annotate", false)
+	viper.Set("keep-existing-dep-schemas", false)
+	viper.Set("value-files", []string{"values.yaml"})
+	viper.Set("skip-auto-generation", []string{})
+	viper.Set("log-level", "info")
+}
+
+// Fix 1: a failed schema write must surface an error and exit non-zero,
+// not silently exit 0.
+func TestExec_WriteFailureReturnsError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writeFile := func(relPath, content string) {
+		path := filepath.Join(tmpDir, relPath)
+		err := os.MkdirAll(filepath.Dir(path), 0o755)
+		assert.NoError(t, err)
+		err = os.WriteFile(path, []byte(content), 0o644)
+		assert.NoError(t, err)
+	}
+
+	writeFile("chart/Chart.yaml", `
+apiVersion: v2
+name: chart
+version: 1.0.0
+`)
+	writeFile("chart/values.yaml", `
+key: value
+`)
+
+	// Pre-create a directory where the output file should go, so os.WriteFile fails.
+	err := os.MkdirAll(filepath.Join(tmpDir, "chart", "values.schema.json"), 0o755)
+	assert.NoError(t, err)
+
+	setStandardViper(tmpDir)
+
+	err = exec(nil, nil)
+	assert.Error(t, err, "a failed schema write must return a non-nil error")
+}
+
+// Fix 2: nesting a dependency into a parent with nil Properties must not panic.
+// Parent has an empty values.yaml and --dont-add-global is set, so Properties stays nil.
+func TestExec_NilParentPropertiesWithDependency(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writeFile := func(relPath, content string) {
+		path := filepath.Join(tmpDir, relPath)
+		err := os.MkdirAll(filepath.Dir(path), 0o755)
+		assert.NoError(t, err)
+		err = os.WriteFile(path, []byte(content), 0o644)
+		assert.NoError(t, err)
+	}
+
+	writeFile("dep/Chart.yaml", `
+apiVersion: v2
+name: dep
+version: 1.0.0
+`)
+	writeFile("dep/values.yaml", `
+key: value
+`)
+
+	writeFile("parent/Chart.yaml", `
+apiVersion: v2
+name: parent
+version: 1.0.0
+dependencies:
+  - name: dep
+    version: 1.0.0
+`)
+	// Empty values.yaml -> nil Properties when dont-add-global is set.
+	writeFile("parent/values.yaml", "")
+
+	setStandardViper(tmpDir)
+	viper.Set("dont-add-global", true)
+
+	err := exec(nil, nil)
+	assert.NoError(t, err)
+
+	parentSchemaPath := filepath.Join(tmpDir, "parent", "values.schema.json")
+	parentSchemaBytes, err := os.ReadFile(parentSchemaPath)
+	assert.NoError(t, err)
+
+	var parentSchema schemaDoc
+	err = json.Unmarshal(parentSchemaBytes, &parentSchema)
+	assert.NoError(t, err)
+
+	_, ok := parentSchema.Properties["dep"]
+	assert.True(t, ok, "dependency must be nested under parent properties")
+}

@@ -1377,3 +1377,57 @@ func TestHoistDefinitions(t *testing.T) {
 		t.Errorf("Hoisted definition should have correct title, got %s", rootSchema.Definitions["RestConfig"].Title)
 	}
 }
+
+// Fix 3: UnmarshalJSON must accept arrays/bools/null and reject other JSON.
+func TestBoolOrArrayOfStringUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		input       string
+		expectError bool
+		wantStrings []string
+		wantBool    bool
+	}{
+		{input: `["a","b"]`, expectError: false, wantStrings: []string{"a", "b"}},
+		{input: `true`, expectError: false, wantBool: true},
+		{input: `false`, expectError: false, wantBool: false},
+		{input: `null`, expectError: false},
+		{input: `123`, expectError: true},
+		{input: `"x"`, expectError: true},
+	}
+
+	for _, tc := range tests {
+		var b BoolOrArrayOfString
+		err := b.UnmarshalJSON([]byte(tc.input))
+		if tc.expectError {
+			if err == nil {
+				t.Errorf("input %q: expected error, got nil", tc.input)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("input %q: unexpected error: %s", tc.input, err)
+			continue
+		}
+		if tc.wantStrings != nil && !reflect.DeepEqual(b.Strings, tc.wantStrings) {
+			t.Errorf("input %q: got Strings %v, want %v", tc.input, b.Strings, tc.wantStrings)
+		}
+		if b.Bool != tc.wantBool {
+			t.Errorf("input %q: got Bool %v, want %v", tc.input, b.Bool, tc.wantBool)
+		}
+	}
+}
+
+// Fix 4: YamlToSchema must not panic when skipAutoGeneration is nil.
+func TestYamlToSchemaNilSkipConfig(t *testing.T) {
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte("key: value\n"), &node); err != nil {
+		t.Fatalf("failed to parse yaml: %s", err)
+	}
+
+	schema, err := YamlToSchema("", &node, false, false, false, true, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error with nil skip config: %s", err)
+	}
+	if schema == nil {
+		t.Fatal("expected non-nil schema")
+	}
+}
