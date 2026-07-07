@@ -48,38 +48,59 @@ As `helm plugin`:
 helm plugin install https://github.com/dadav/helm-schema
 ```
 
+> [!IMPORTANT]
+> Since Helm v4.2, plugin signature verification is enabled by default, and
+> installing from a git repository URL fails with
+> `plugin source does not support verification`, because git sources cannot be
+> verified by Helm. Either install from a release tarball with verification
+> (recommended, see below) or explicitly skip verification:
+>
+> ```sh
+> helm plugin install https://github.com/dadav/helm-schema --verify=false
+> ```
+
 ### Plugin Verification (Helm v4+)
 
-Helm v4 introduced plugin verification for enhanced security. All helm-schema releases are signed with GPG and include provenance files (`.prov`) for verification.
+All helm-schema releases are signed with GPG and include provenance files
+(`.prov`) so Helm can verify them. Helm can only verify plugins installed from
+a release tarball URL (`.tar.gz`), not from a git repository URL.
 
-**Automatic Verification (Recommended)**
+**Step 1: Import the signing key**
 
-Helm v4 verifies plugin signatures by default:
+Helm reads public keys from the legacy GPG keyring format. The simplest way is
+to write the key to a standalone keyring file:
 
 ```sh
-# Install from a specific release with automatic verification
-helm plugin install https://github.com/dadav/helm-schema/releases/download/vX.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz
+curl -fsSL https://raw.githubusercontent.com/dadav/helm-schema/main/signing-key.asc \
+  | gpg --dearmor > helm-schema-keyring.gpg
 ```
 
-**Manual Verification**
-
-Before installing, import the signing key:
+Alternatively, import it into your regular GnuPG setup and export it in the
+legacy format Helm expects:
 
 ```sh
-# Import the public signing key (from file)
-gpg --import signing-key.asc
-
-# Or import by key ID (last 16 hex chars of the fingerprint)
+# Import by key ID (last 16 hex chars of the fingerprint)
 gpg --keyserver keyserver.ubuntu.com --recv-keys F58707969D0FBFA5
 
 # Verify the imported key fingerprint (expect: 806F 70D2 5667 D42A AE4E 07CE F587 0796 9D0F BFA5)
 gpg --fingerprint F58707969D0FBFA5
 
-# Export from kdx and save in old gpg format
+# Export from the modern kbx store into the legacy format at Helm's default keyring location
 gpg --export F58707969D0FBFA5 > ~/.gnupg/pubring.gpg
+```
 
-# Install with explicit verification
-helm plugin install https://github.com/dadav/helm-schema/releases/download/vX.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz --verify
+**Step 2: Install from a release tarball**
+
+Replace `X.Y.Z` with a release version (no `v` prefix, e.g. `0.23.4`) and pick
+your OS/architecture from the release assets:
+
+```sh
+# Verified against Helm's default keyring (~/.gnupg/pubring.gpg)
+helm plugin install https://github.com/dadav/helm-schema/releases/download/X.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz
+
+# Or point Helm at the standalone keyring file from step 1
+helm plugin install https://github.com/dadav/helm-schema/releases/download/X.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz \
+  --keyring helm-schema-keyring.gpg
 ```
 
 **Verify Installed Plugin**
@@ -90,7 +111,8 @@ helm plugin verify schema
 ```
 
 > [!NOTE]
-> Plugin verification requires Helm v4 or later. If using Helm v3, signatures will be ignored.
+> Plugin verification requires Helm v4 or later. If using Helm v3, signatures
+> will be ignored.
 
 ## Usage
 

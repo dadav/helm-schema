@@ -245,7 +245,8 @@ The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Dr
 
 ## Documentation Notes
 
-- README plugin verification examples should use a `vX.Y.Z` placeholder to avoid version drift.
+- README plugin verification examples should use an `X.Y.Z` placeholder (release tags have no `v` prefix, e.g. `0.23.4`) to avoid version drift.
+- Since Helm v4.2, `helm plugin install <git-repo-url>` fails by default (`--verify` defaults to true and git sources cannot be verified); only release tarball URLs (and OCI refs) support verification.
 - GPG public key fingerprint (from `signing-key.asc`) is `806F 70D2 5667 D42A AE4E 07CE F587 0796 9D0F BFA5`; key ID is `F58707969D0FBFA5`.
 
 ## Validation Behavior
