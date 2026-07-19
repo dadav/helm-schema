@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/dadav/helm-schema/pkg/chart"
 	"github.com/dadav/helm-schema/pkg/chart/searching"
 	"github.com/dadav/helm-schema/pkg/schema"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -175,6 +177,69 @@ func processImportValues(
 	return importedProps
 }
 
+// parseConditionPaths parses a Helm dependency condition string into one or more
+// property paths that should receive a boolean marker in the target schema.
+//
+// Helm conditions may contain comma-separated fallback paths (e.g.
+// "a.enabled,b.enabled"); Helm honors the first path that exists, but for schema
+// generation every fallback path is a valid location for the boolean, so all of
+// them are returned. Single-segment paths (e.g. "enabled") are skipped because
+// they cannot be nested under a dependency property.
+func parseConditionPaths(condition, depName, depAlias string) [][]string {
+	var paths [][]string
+	for _, part := range strings.Split(condition, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		conditionKeys := strings.Split(part, ".")
+		if len(conditionKeys) == 1 {
+			continue
+		}
+		targetName := conditionKeys[0]
+		if depAlias != "" && depAlias == conditionKeys[0] {
+			targetName = depName
+		}
+		if targetName == "" {
+			continue
+		}
+		// Prepend targetName so the caller can key patches by target and reuse the
+		// remaining segments as the nested path.
+		paths = append(paths, append([]string{targetName}, conditionKeys[1:]...))
+	}
+	return paths
+}
+
+// stubURLLoader resolves any external ($ref) URL to a permissive schema so that
+// final-schema compilation stays hermetic: no network access and no dependency
+// on external schema files existing. It still lets the compiler catch
+// structurally invalid output and broken internal refs.
+type stubURLLoader struct{}
+
+func (stubURLLoader) Load(_ string) (any, error) {
+	// `true` is a valid JSON Schema that matches everything.
+	return true, nil
+}
+
+// compileFinalSchema compiles the serialized final schema against Draft 7 to
+// verify it is structurally valid and that all internal $refs resolve. External
+// refs are stubbed via stubURLLoader.
+func compileFinalSchema(jsonStr []byte) error {
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(jsonStr))
+	if err != nil {
+		return fmt.Errorf("failed to parse generated schema: %w", err)
+	}
+	c := jsonschema.NewCompiler()
+	c.UseLoader(stubURLLoader{})
+	if err := c.AddResource("values.schema.json", doc); err != nil {
+		return fmt.Errorf("failed to add generated schema: %w", err)
+	}
+	if _, err := c.Compile("values.schema.json"); err != nil {
+		return fmt.Errorf("generated schema is not valid: %w", err)
+	}
+	return nil
+}
+
 func exec(cmd *cobra.Command, _ []string) error {
 	configureLogging()
 
@@ -197,6 +262,18 @@ func exec(cmd *cobra.Command, _ []string) error {
 	allowCircularDeps := viper.GetBool("allow-circular-dependencies")
 	annotate := viper.GetBool("annotate")
 	keepExistingDepSchemas := viper.GetBool("keep-existing-dep-schemas")
+	check := viper.GetBool("check")
+	if check {
+		if dryRun {
+			return errors.New("--check cannot be combined with --dry-run")
+		}
+		if annotate {
+			return errors.New("--check cannot be combined with --annotate")
+		}
+		if addSchemaReference {
+			return errors.New("--check cannot be combined with --add-schema-reference")
+		}
+	}
 	for _, dep := range dependenciesFilter {
 		dependenciesFilterMap[dep] = true
 	}
@@ -375,16 +452,9 @@ drainErrors:
 				}
 
 				if dep.Condition != "" {
-					conditionKeys := strings.Split(dep.Condition, ".")
-					if len(conditionKeys) == 1 {
-						continue
-					}
-					targetName := conditionKeys[0]
-					if dep.Alias != "" && dep.Alias == conditionKeys[0] {
-						targetName = dep.Name
-					}
-					if targetName != "" {
-						conditionsToPatch[targetName] = append(conditionsToPatch[targetName], conditionKeys[1:])
+					for _, path := range parseConditionPaths(dep.Condition, dep.Name, dep.Alias) {
+						targetName := path[0]
+						conditionsToPatch[targetName] = append(conditionsToPatch[targetName], path[1:])
 					}
 				}
 			}
@@ -393,6 +463,7 @@ drainErrors:
 
 	chartNameToResult := make(map[string]*schema.Result)
 	foundErrors := false
+	staleFound := false
 
 	for _, result := range results {
 		if len(result.Errors) > 0 {
@@ -580,7 +651,23 @@ drainErrors:
 			jsonStr = append(jsonStr, '\n')
 		}
 
-		if dryRun {
+		// Compile the final merged schema against Draft 7 to catch structurally
+		// invalid output and broken internal $refs. External refs are stubbed so
+		// compilation stays hermetic.
+		if err := compileFinalSchema(jsonStr); err != nil {
+			log.Errorf("Generated schema for chart %s is invalid: %s", result.Chart.Name, err)
+			foundErrors = true
+			continue
+		}
+
+		if check {
+			chartBasePath := filepath.Dir(result.ChartPath)
+			existing, err := os.ReadFile(filepath.Join(chartBasePath, outFile))
+			if err != nil || !bytes.Equal(existing, jsonStr) {
+				log.Errorf("Schema for chart %s is stale (or missing): %s", result.Chart.Name, filepath.Join(chartBasePath, outFile))
+				staleFound = true
+			}
+		} else if dryRun {
 			log.Infof("Printing jsonschema for %s chart (%s)", result.Chart.Name, result.ChartPath)
 			if appendNewline {
 				fmt.Printf("%s", jsonStr)
@@ -598,6 +685,9 @@ drainErrors:
 	}
 	if foundErrors {
 		return errors.New("some errors were found")
+	}
+	if staleFound {
+		return errors.New("schema files are not up-to-date, run helm-schema to regenerate")
 	}
 	return nil
 }

@@ -16,7 +16,6 @@ import (
 	"github.com/dadav/go-jsonpointer"
 	"github.com/dadav/helm-schema/pkg/util"
 	"github.com/norwoodj/helm-docs/pkg/helm"
-	"github.com/santhosh-tekuri/jsonschema/v6"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
@@ -918,16 +917,10 @@ func (s Schema) Validate() error {
 }
 
 func (s Schema) validateSchemaSyntax() error {
-	jsonStr, err := s.ToJson()
-	if err != nil {
-		return fmt.Errorf("failed to convert schema to JSON: %w", err)
-	}
-
-	c := jsonschema.NewCompiler()
-	if err := c.AddResource("schema.json", jsonStr); err != nil {
-		return fmt.Errorf("invalid schema syntax: %w", err)
-	}
-
+	// Note: this runs per annotation subschema during parsing, where fragment
+	// refs like #/definitions/foo legitimately point outside the subschema. Full
+	// Draft 7 compilation of the final merged schema happens once per chart in
+	// cmd/helm-schema/main.go instead.
 	return s.Type.Validate()
 }
 
@@ -1765,15 +1758,18 @@ func YamlToSchema(
 				keyNodeSchema.Type = nodeType
 			}
 
+			// Add key to required array of parent. This must run even when $ref is
+			// set so that an explicit `required: true` on a $ref'd key is honored
+			// (issue #131). The auto-required branch (!keyNodeSchema.HasData) never
+			// fires for $ref keys because Ref != "" implies HasData == true.
+			if keyNodeSchema.Required.Bool || (len(keyNodeSchema.Required.Strings) == 0 && !skipAutoGeneration.Required && !keyNodeSchema.HasData) {
+				if !slices.Contains(*parentRequiredProperties, keyNode.Value) {
+					*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
+				}
+			}
+
 			// only validate or default if $ref is not set
 			if keyNodeSchema.Ref == "" {
-
-				// Add key to required array of parent
-				if keyNodeSchema.Required.Bool || (len(keyNodeSchema.Required.Strings) == 0 && !skipAutoGeneration.Required && !keyNodeSchema.HasData) {
-					if !slices.Contains(*parentRequiredProperties, keyNode.Value) {
-						*parentRequiredProperties = append(*parentRequiredProperties, keyNode.Value)
-					}
-				}
 
 				if !skipAutoGeneration.AdditionalProperties && valueNode.Kind == yaml.MappingNode &&
 					(!keyNodeSchema.HasData || keyNodeSchema.AdditionalProperties == nil) {

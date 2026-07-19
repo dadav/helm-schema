@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1068,6 +1069,48 @@ message: fixed`,
 				t.Fatalf("Did not expect JSON to contain const-from-value, got %s", string(jsonData))
 			}
 		})
+	}
+}
+
+func TestYamlToSchemaRequiredWithRef(t *testing.T) {
+	// Regression test for issue #131: an explicit `required: true` on a key that
+	// carries a $ref must still mark the key required in its parent, even though
+	// title/description/default auto-generation is skipped for $ref keys.
+	yamlContent := `# @schema
+# $ref: https://example.com/schemas/thing.json
+# required: true
+# @schema
+refRequired: bar
+# @schema
+# $ref: https://example.com/schemas/thing.json
+# @schema
+refOptional: baz`
+
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(yamlContent), &node); err != nil {
+		t.Fatalf("Failed to unmarshal YAML: %v", err)
+	}
+
+	skipConfig := &SkipAutoGenerationConfig{}
+	schema, err := YamlToSchema("", &node, false, false, false, true, skipConfig, nil)
+	if err != nil {
+		t.Fatalf("YamlToSchema failed: %v", err)
+	}
+
+	if !slices.Contains(schema.Required.Strings, "refRequired") {
+		t.Fatalf("Expected parent required list to contain 'refRequired', got %v", schema.Required.Strings)
+	}
+	if slices.Contains(schema.Required.Strings, "refOptional") {
+		t.Fatalf("Did not expect parent required list to contain 'refOptional', got %v", schema.Required.Strings)
+	}
+
+	// The $ref must be preserved (not inlined) for an external URL.
+	refRequired, ok := schema.Properties["refRequired"]
+	if !ok {
+		t.Fatal("Expected schema to contain refRequired property")
+	}
+	if refRequired.Ref != "https://example.com/schemas/thing.json" {
+		t.Fatalf("Expected refRequired to keep its $ref, got %q", refRequired.Ref)
 	}
 }
 

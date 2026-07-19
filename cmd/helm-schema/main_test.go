@@ -681,3 +681,86 @@ dependencies:
 	_, ok := parentSchema.Properties["dep"]
 	assert.True(t, ok, "dependency must be nested under parent properties")
 }
+
+func TestParseConditionPaths(t *testing.T) {
+	tests := []struct {
+		name      string
+		condition string
+		depName   string
+		depAlias  string
+		expected  [][]string
+	}{
+		{
+			name:      "single dotted path",
+			condition: "foo.enabled",
+			depName:   "foo",
+			expected:  [][]string{{"foo", "enabled"}},
+		},
+		{
+			name:      "comma-separated fallbacks",
+			condition: "foo.enabled,bar.enabled",
+			depName:   "foo",
+			expected:  [][]string{{"foo", "enabled"}, {"bar", "enabled"}},
+		},
+		{
+			name:      "whitespace around comma parts",
+			condition: "foo.enabled , bar.enabled",
+			depName:   "foo",
+			expected:  [][]string{{"foo", "enabled"}, {"bar", "enabled"}},
+		},
+		{
+			name:      "alias maps to dependency name",
+			condition: "myalias.enabled",
+			depName:   "foo",
+			depAlias:  "myalias",
+			expected:  [][]string{{"foo", "enabled"}},
+		},
+		{
+			name:      "single-segment path is skipped",
+			condition: "enabled",
+			depName:   "foo",
+			expected:  nil,
+		},
+		{
+			name:      "deeply nested path",
+			condition: "foo.sub.enabled",
+			depName:   "foo",
+			expected:  [][]string{{"foo", "sub", "enabled"}},
+		},
+		{
+			name:      "empty condition",
+			condition: "",
+			depName:   "foo",
+			expected:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseConditionPaths(tt.condition, tt.depName, tt.depAlias)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestCompileFinalSchema(t *testing.T) {
+	// Valid schema with an external $ref compiles cleanly thanks to the stub loader.
+	valid := []byte(`{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"properties": {
+			"ext": {"$ref": "https://example.com/schemas/thing.json"}
+		}
+	}`)
+	assert.NoError(t, compileFinalSchema(valid), "valid schema with external ref must compile")
+
+	// Dangling internal $ref must fail compilation.
+	dangling := []byte(`{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"properties": {
+			"broken": {"$ref": "#/definitions/doesNotExist"}
+		}
+	}`)
+	assert.Error(t, compileFinalSchema(dangling), "dangling internal $ref must fail compilation")
+}

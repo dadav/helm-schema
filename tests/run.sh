@@ -106,4 +106,47 @@ cp "$dep_schema_backup" ../preexisting-schema/dep-with-schema/values.schema.json
 rm -f "$dep_schema_backup"
 rm -f ../preexisting-schema/parent/values.schema.json
 
+# --check mode: clean tree exits 0, stale/missing schema exits nonzero
+echo "Testing --check mode"
+check_dir=$(mktemp -d)
+cat >"$check_dir/Chart.yaml" <<'EOF'
+apiVersion: v2
+name: check-test
+version: 0.1.0
+EOF
+cat >"$check_dir/values.yaml" <<'EOF'
+foo: bar
+EOF
+
+# Generate the schema first so the tree is up-to-date
+../helm-schema -c "$check_dir" >/dev/null 2>&1
+
+# Clean tree: --check should succeed
+if ../helm-schema -c "$check_dir" --check >/dev/null 2>&1; then
+	echo "✅: --check clean tree exits 0"
+else
+	echo "❌: --check clean tree should exit 0"
+	rc=1
+fi
+
+# Corrupted schema: --check should fail
+echo '{"corrupted": true}' >"$check_dir/values.schema.json"
+if ../helm-schema -c "$check_dir" --check >/dev/null 2>&1; then
+	echo "❌: --check corrupted schema should exit nonzero"
+	rc=1
+else
+	echo "✅: --check corrupted schema exits nonzero"
+fi
+
+# Missing schema: --check should fail
+rm -f "$check_dir/values.schema.json"
+if ../helm-schema -c "$check_dir" --check >/dev/null 2>&1; then
+	echo "❌: --check missing schema should exit nonzero"
+	rc=1
+else
+	echo "✅: --check missing schema exits nonzero"
+fi
+
+rm -rf "$check_dir"
+
 exit "$rc"

@@ -260,6 +260,14 @@ The schema validation (`Validate()` method) performs type-specific constraint ch
 
 Some keywords like `uniqueItems` are accepted on any type per the JSON Schema spec (keywords are ignored if the type doesn't match).
 
+### Final Schema Compilation
+
+After all merging/hoisting, each chart's final serialized schema is compiled against Draft 7 in `cmd/helm-schema/main.go` (`compileFinalSchema`) using `github.com/santhosh-tekuri/jsonschema/v6`. External `$ref` URLs are resolved to a permissive schema via a stub `URLLoader` (`stubURLLoader`) so compilation is hermetic (no network, no dependency on external files). This catches structurally invalid output and broken internal `$ref`s; failures set `foundErrors` and abort with an error. `validateSchemaSyntax` (per-subschema, during parsing) intentionally does NOT compile, because fragment refs there legitimately point outside the subschema.
+
+### Check Mode (`--check` / `-C`)
+
+`--check` regenerates every schema in memory and byte-compares it against the committed `values.schema.json`; any missing or stale file is logged and the process exits nonzero without writing anything. It cannot be combined with `--dry-run`, `--annotate`, or `--add-schema-reference`. Intended for CI enforcement.
+
 ## Common Gotchas
 
 1. **Draft 7 limitation**: The tool uses JSON Schema Draft 7 because Helm's validation library only supports that version. When referencing external schemas that use `$defs` (Draft 2019-09+), they are automatically converted to `definitions` and `$ref` paths are rewritten from `#/$defs/` to `#/definitions/`.

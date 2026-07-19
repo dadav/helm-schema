@@ -83,6 +83,8 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 		BoolP("annotate", "A", false, "write inferred @schema annotations into values.yaml files for unannotated keys")
 	cmd.PersistentFlags().
 		BoolP("keep-existing-dep-schemas", "K", false, "use dependency charts' pre-existing values.schema.json instead of regenerating from values.yaml")
+	cmd.PersistentFlags().
+		BoolP("check", "C", false, "check that existing schema files are up-to-date; exit nonzero if any are missing or stale, without writing files")
 
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("HELM_SCHEMA")

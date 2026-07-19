@@ -1,0 +1,12 @@
+---
+# @schema
+# $ref: https://example.com/schemas/thing.json
+# required: true
+# @schema
+# Not from ref
+refRequired: bar
+# @schema
+# $ref: https://example.com/schemas/thing.json
+# @schema
+# Not from ref
+refOptional: baz

@@ -148,6 +148,7 @@ Flags:
   -r, --add-schema-reference                   "add reference to schema in values.yaml if not found"
   -w, --allow-circular-dependencies            "allow circular dependencies between charts (will log a warning instead of failing)"
   -a, --append-newline                         "append newline to generated jsonschema at the end of the file"
+  -C, --check                                  "check that existing schema files are up-to-date; exit nonzero if any are missing or stale, without writing files"
   -c, --chart-search-root string               "directory to search recursively within for charts (default ".")"
   -i, --dependencies-filter strings            "only generate schema for specified dependencies (comma-separated list of dependency names)"
   -g, --dont-add-global                        "don't auto add global property"
@@ -180,6 +181,21 @@ Use `--annotate` to add inferred `# @schema` type blocks to a values file instea
 - Keys that already have `@schema` annotations are left unchanged.
 - With `-d, --dry-run`, the annotated file is printed to stdout instead of being written back.
 - When multiple `--value-files` entries are configured, annotate mode uses only the first matching file.
+
+### Check mode (CI)
+
+Use `-C, --check` to verify that committed `values.schema.json` files are up-to-date without writing anything. The command regenerates each schema in memory and compares it byte-for-byte against the file on disk. If any schema is missing or stale, it logs the offending charts and exits with a nonzero status.
+
+`--check` cannot be combined with `--dry-run`, `--annotate`, or `--add-schema-reference`.
+
+Example CI step:
+
+```yaml
+- name: Verify Helm schemas are up-to-date
+  run: helm-schema --check
+```
+
+If the step fails, run `helm-schema` locally and commit the regenerated `values.schema.json` files.
 
 ## Annotations
 
@@ -621,6 +637,11 @@ It's also possible to define an array of required properties on the parent.
 altName:
   foo: bar
 ```
+
+The boolean and array forms have distinct meanings:
+
+- **Boolean** (`required: true` / `required: false`) controls whether **this key itself** is listed in its parent object's `required` array. This also applies when the key carries a `$ref` (issue #131): `required: true` still marks the `$ref`'d key as required in its parent.
+- **Array** (`required: [foo, bar]`) lists which of **this object's own children** are required, i.e. it populates the object's own `required` array. It does not, by itself, mark the object as required in its parent (that is governed by the default-required behavior described above, or an explicit boolean form).
 
 #### `deprecated`
 

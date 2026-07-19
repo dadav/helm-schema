@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+      "required": [],
+      "title": "global",
+      "type": "object"
+    },
+    "refOptional": {
+      "$ref": "https://example.com/schemas/thing.json",
+      "required": []
+    },
+    "refRequired": {
+      "$ref": "https://example.com/schemas/thing.json",
+      "required": []
+    }
+  },
+  "required": [
+    "refRequired"
+  ],
+  "type": "object"
+}
