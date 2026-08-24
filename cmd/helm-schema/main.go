@@ -290,18 +290,77 @@ func exec(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	queue := make(chan string)
 	resultsChan := make(chan schema.Result)
 	results := []*schema.Result{}
 	errs := make(chan error, 100) // Buffered to prevent deadlock when errors occur before goroutines start
-	done := make(chan struct{})
 
 	tempDir := searching.SearchArchivesOpenTemp(chartSearchRoot, errs)
 	if tempDir != "" {
 		defer os.RemoveAll(tempDir)
 	}
 
-	go searching.SearchFiles(chartSearchRoot, chartSearchRoot, "Chart.yaml", dependenciesFilterMap, queue, errs)
+	discoveredCharts, discoveryErrors := searching.DiscoverCharts(
+		chartSearchRoot,
+		chartSearchRoot,
+		"Chart.yaml",
+		dependenciesFilterMap,
+	)
+	for _, discoveryErr := range discoveryErrors {
+		log.Error(discoveryErr)
+	}
+	if len(discoveryErrors) > 0 {
+		return errors.New("chart discovery failed")
+	}
+
+	// Identify dependencies before values processing so flags that skip or reuse
+	// dependency schemas can prevent dependency values from entering workers.
+	isDependencyChart := make(map[string]bool)
+	for _, discovered := range discoveredCharts {
+		for _, dep := range discovered.Chart.Dependencies {
+			isDependencyChart[dep.Name] = true
+		}
+	}
+
+	workerChartPaths := make([]string, 0, len(discoveredCharts))
+	for _, discovered := range discoveredCharts {
+		if noDeps && isDependencyChart[discovered.Chart.Name] {
+			log.Debugf("Skipping dependency chart %s (--no-dependencies)", discovered.Chart.Name)
+			continue
+		}
+
+		if !annotate && keepExistingDepSchemas && isDependencyChart[discovered.Chart.Name] {
+			schemaPath := filepath.Join(filepath.Dir(discovered.Path), outFile)
+			schemaData, readErr := os.ReadFile(schemaPath)
+			if readErr == nil {
+				var existingSchema schema.Schema
+				if unmarshalErr := json.Unmarshal(schemaData, &existingSchema); unmarshalErr == nil {
+					chartFile := discovered.Chart
+					results = append(results, &schema.Result{
+						ChartPath:         discovered.Path,
+						Chart:             &chartFile,
+						Schema:            existingSchema,
+						PreExistingSchema: true,
+					})
+					log.Debugf("Using pre-existing schema for dependency chart %s", discovered.Chart.Name)
+					continue
+				} else {
+					log.Warnf("Found existing %s for dependency %s but failed to parse it: %s; regenerating from values", outFile, discovered.Chart.Name, unmarshalErr)
+				}
+			} else if !os.IsNotExist(readErr) {
+				log.Warnf("Failed to read existing %s for dependency %s: %s; regenerating from values", outFile, discovered.Chart.Name, readErr)
+			} else {
+				log.Debugf("No existing %s found for dependency %s; regenerating from values", outFile, discovered.Chart.Name)
+			}
+		}
+
+		workerChartPaths = append(workerChartPaths, discovered.Path)
+	}
+
+	queue := make(chan string, len(workerChartPaths))
+	for _, chartPath := range workerChartPaths {
+		queue <- chartPath
+	}
+	close(queue)
 
 	wg := sync.WaitGroup{}
 
@@ -332,7 +391,6 @@ func exec(cmd *cobra.Command, _ []string) error {
 	go func() {
 		wg.Wait()
 		close(resultsChan)
-		close(done)
 	}()
 
 	// Collect results and errors until both channels are closed
@@ -399,47 +457,6 @@ drainErrors:
 		}
 	}
 
-	// Identify charts that are declared as dependencies of some other discovered
-	// chart. Used both to skip dependency charts entirely with --no-dependencies
-	// and to opt-in reuse of a dependency's pre-existing schema.
-	isDependencyChart := make(map[string]bool)
-	for _, result := range results {
-		if result.Chart == nil || len(result.Errors) > 0 {
-			continue
-		}
-		for _, dep := range result.Chart.Dependencies {
-			isDependencyChart[dep.Name] = true
-		}
-	}
-
-	// For dependency charts with pre-existing schema files, load them instead of
-	// using the worker-generated schema from values.yaml. Opt-in via
-	// --keep-existing-dep-schemas; default is to regenerate every discovered
-	// chart's schema.
-	if !noDeps && keepExistingDepSchemas {
-		for _, result := range results {
-			if result.Chart == nil || len(result.Errors) > 0 {
-				continue
-			}
-			if !isDependencyChart[result.Chart.Name] {
-				continue
-			}
-			schemaPath := filepath.Join(filepath.Dir(result.ChartPath), outFile)
-			schemaData, err := os.ReadFile(schemaPath)
-			if err != nil {
-				continue
-			}
-			var existingSchema schema.Schema
-			if err := json.Unmarshal(schemaData, &existingSchema); err != nil {
-				log.Warnf("Found existing %s for dependency %s but failed to parse it: %s", outFile, result.Chart.Name, err)
-				continue
-			}
-			log.Debugf("Using pre-existing schema for dependency chart %s", result.Chart.Name)
-			result.Schema = existingSchema
-			result.PreExistingSchema = true
-		}
-	}
-
 	conditionsToPatch := make(map[string][][]string)
 	if !noDeps {
 		for _, result := range results {
@@ -486,13 +503,6 @@ drainErrors:
 
 		if result.Chart == nil {
 			log.Warnf("Skipping result with nil Chart at path: %s", result.ChartPath)
-			continue
-		}
-
-		// With --no-dependencies, skip charts that are declared as dependencies of
-		// some other discovered chart. Top-level charts are still processed.
-		if noDeps && isDependencyChart[result.Chart.Name] {
-			log.Debugf("Skipping dependency chart %s (--no-dependencies)", result.Chart.Name)
 			continue
 		}
 

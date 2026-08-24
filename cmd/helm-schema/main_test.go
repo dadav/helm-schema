@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +10,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type stringOrArray []string
@@ -39,6 +42,43 @@ type schemaDoc struct {
 type schemaProperty struct {
 	Type       stringOrArray             `json:"type"`
 	Properties map[string]schemaProperty `json:"properties"`
+}
+
+func writeTestFile(t *testing.T, root, relativePath, content string) {
+	t.Helper()
+
+	path := filepath.Join(root, relativePath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+type testArchiveFile struct {
+	name    string
+	content string
+}
+
+func writeTestChartArchive(t *testing.T, path string, files []testArchiveFile) {
+	t.Helper()
+
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	archiveFile, err := os.Create(path)
+	require.NoError(t, err)
+
+	gzipWriter := gzip.NewWriter(archiveFile)
+	tarWriter := tar.NewWriter(gzipWriter)
+	for _, file := range files {
+		header := &tar.Header{
+			Name: file.name,
+			Mode: 0o644,
+			Size: int64(len(file.content)),
+		}
+		require.NoError(t, tarWriter.WriteHeader(header))
+		_, err = tarWriter.Write([]byte(file.content))
+		require.NoError(t, err)
+	}
+	require.NoError(t, tarWriter.Close())
+	require.NoError(t, gzipWriter.Close())
+	require.NoError(t, archiveFile.Close())
 }
 
 func TestExec_ConditionPatchingAndRootConditions(t *testing.T) {
@@ -573,6 +613,177 @@ inside: 2
 	_, err = os.Stat(depSchemaPath)
 	assert.True(t, os.IsNotExist(err),
 		"dependency chart schema must not be generated with --no-dependencies (issue #215)")
+}
+
+func TestExec_NoDependenciesSkipsInvalidDependencyValues(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writeTestFile(t, tmpDir, "parent/Chart.yaml", `
+apiVersion: v2
+name: parent
+version: 1.0.0
+dependencies:
+  - name: dependency
+    version: 1.0.0
+`)
+	writeTestFile(t, tmpDir, "parent/values.yaml", "parentValue: true\n")
+	writeTestFile(t, tmpDir, "parent/dependency/Chart.yaml", `
+apiVersion: v2
+name: dependency
+version: 1.0.0
+`)
+	writeTestFile(t, tmpDir, "parent/dependency/values.yaml", `
+# @schema
+# type: string
+broken: value
+`)
+
+	setStandardViper(tmpDir)
+	viper.Set("no-dependencies", true)
+
+	err := exec(nil, nil)
+	assert.NoError(t, err)
+
+	_, err = os.Stat(filepath.Join(tmpDir, "parent", "values.schema.json"))
+	assert.NoError(t, err, "parent schema must be generated")
+	_, err = os.Stat(filepath.Join(tmpDir, "parent", "dependency", "values.schema.json"))
+	assert.True(t, os.IsNotExist(err), "invalid dependency values must not be processed")
+}
+
+func TestExec_NoDependenciesSkipsDependencyMutations(t *testing.T) {
+	tests := []struct {
+		name     string
+		annotate bool
+		addRef   bool
+	}{
+		{name: "annotate", annotate: true},
+		{name: "add schema reference", addRef: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			dependencyValues := "dependencyValue: true\n"
+
+			writeTestFile(t, tmpDir, "parent/Chart.yaml", `
+apiVersion: v2
+name: parent
+version: 1.0.0
+dependencies:
+  - name: dependency
+    version: 1.0.0
+`)
+			writeTestFile(t, tmpDir, "parent/values.yaml", "parentValue: true\n")
+			writeTestFile(t, tmpDir, "parent/dependency/Chart.yaml", `
+apiVersion: v2
+name: dependency
+version: 1.0.0
+`)
+			writeTestFile(t, tmpDir, "parent/dependency/values.yaml", dependencyValues)
+
+			setStandardViper(tmpDir)
+			viper.Set("no-dependencies", true)
+			viper.Set("annotate", test.annotate)
+			viper.Set("add-schema-reference", test.addRef)
+
+			assert.NoError(t, exec(nil, nil))
+			actualDependencyValues, err := os.ReadFile(filepath.Join(tmpDir, "parent", "dependency", "values.yaml"))
+			assert.NoError(t, err)
+			assert.Equal(t, dependencyValues, string(actualDependencyValues))
+		})
+	}
+}
+
+func TestExec_KeepExistingSchemaFromArchivedDependencySkipsInvalidValues(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writeTestFile(t, tmpDir, "Chart.yaml", `
+apiVersion: v2
+name: parent
+version: 1.0.0
+dependencies:
+  - name: dependency
+    version: 1.0.0
+`)
+	writeTestFile(t, tmpDir, "values.yaml", "parentValue: true\n")
+	writeTestChartArchive(t, filepath.Join(tmpDir, "charts", "dependency-1.0.0.tgz"), []testArchiveFile{
+		{
+			name: "dependency/Chart.yaml",
+			content: `
+apiVersion: v2
+name: dependency
+version: 1.0.0
+`,
+		},
+		{
+			name: "dependency/values.yaml",
+			content: `
+# @schema
+# type: integer
+port: 8080
+`,
+		},
+		{
+			name: "dependency/values.schema.json",
+			content: `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "port": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}`,
+		},
+	})
+
+	setStandardViper(tmpDir)
+	viper.Set("keep-existing-dep-schemas", true)
+
+	assert.NoError(t, exec(nil, nil))
+
+	parentSchemaData, err := os.ReadFile(filepath.Join(tmpDir, "values.schema.json"))
+	assert.NoError(t, err)
+	var parentSchema schemaDoc
+	assert.NoError(t, json.Unmarshal(parentSchemaData, &parentSchema))
+	dependencyProperty, ok := parentSchema.Properties["dependency"]
+	assert.True(t, ok, "archived dependency schema must be merged into the parent")
+	_, ok = dependencyProperty.Properties["port"]
+	assert.True(t, ok, "pre-existing dependency schema must be used without parsing invalid values")
+}
+
+func TestExec_KeepExistingInvalidSchemaFallsBackToValues(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writeTestFile(t, tmpDir, "parent/Chart.yaml", `
+apiVersion: v2
+name: parent
+version: 1.0.0
+dependencies:
+  - name: dependency
+    version: 1.0.0
+`)
+	writeTestFile(t, tmpDir, "parent/values.yaml", "parentValue: true\n")
+	writeTestFile(t, tmpDir, "parent/dependency/Chart.yaml", `
+apiVersion: v2
+name: dependency
+version: 1.0.0
+`)
+	writeTestFile(t, tmpDir, "parent/dependency/values.yaml", "generatedValue: true\n")
+	writeTestFile(t, tmpDir, "parent/dependency/values.schema.json", "{invalid json")
+
+	setStandardViper(tmpDir)
+	viper.Set("keep-existing-dep-schemas", true)
+
+	assert.NoError(t, exec(nil, nil))
+
+	dependencySchemaData, err := os.ReadFile(filepath.Join(tmpDir, "parent", "dependency", "values.schema.json"))
+	assert.NoError(t, err)
+	var dependencySchema schemaDoc
+	assert.NoError(t, json.Unmarshal(dependencySchemaData, &dependencySchema))
+	_, ok := dependencySchema.Properties["generatedValue"]
+	assert.True(t, ok, "invalid existing schema must fall back to values generation")
 }
 
 // setStandardViper applies the default viper config block used by exec().

@@ -4,13 +4,19 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"fmt"
-	"github.com/dadav/helm-schema/pkg/chart"
-	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dadav/helm-schema/pkg/chart"
+	"gopkg.in/yaml.v3"
 )
+
+type DiscoveredChart struct {
+	Path  string
+	Chart chart.ChartFile
+}
 
 func extractTGZ(src, dest string) error {
 	file, err := os.Open(src)
@@ -87,44 +93,55 @@ func extractTGZ(src, dest string) error {
 
 func SearchFiles(chartSearchRoot, startPath, fileName string, dependenciesFilter map[string]bool, queue chan<- string, errs chan<- error) {
 	defer close(queue)
-	err := filepath.Walk(startPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			errs <- err
+	discoveredCharts, discoveryErrors := DiscoverCharts(chartSearchRoot, startPath, fileName, dependenciesFilter)
+	for _, err := range discoveryErrors {
+		errs <- err
+	}
+	for _, discovered := range discoveredCharts {
+		queue <- discovered.Path
+	}
+}
+
+// DiscoverCharts reads chart metadata before values files are processed. This
+// lets callers decide which charts should enter the schema worker pipeline.
+func DiscoverCharts(chartSearchRoot, startPath, fileName string, dependenciesFilter map[string]bool) ([]DiscoveredChart, []error) {
+	discovered := []DiscoveredChart{}
+	discoveryErrors := []error{}
+
+	err := filepath.Walk(startPath, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			discoveryErrors = append(discoveryErrors, walkErr)
+			return nil
+		}
+		if info.IsDir() || info.Name() != fileName {
 			return nil
 		}
 
-		if !info.IsDir() && info.Name() == fileName {
-			if filepath.Dir(path) == chartSearchRoot {
-				queue <- path
-				return nil
-			}
-
-			if len(dependenciesFilter) > 0 {
-				chartData, err := os.ReadFile(path)
-				if err != nil {
-					errs <- fmt.Errorf("failed to read Chart.yaml at %s: %w", path, err)
-					return nil
-				}
-
-				var chartFile chart.ChartFile
-				if err := yaml.Unmarshal(chartData, &chartFile); err != nil {
-					errs <- fmt.Errorf("failed to parse Chart.yaml at %s: %w", path, err)
-					return nil
-				}
-
-				if dependenciesFilter[chartFile.Name] {
-					queue <- path
-				}
-			} else {
-				queue <- path
-			}
+		chartData, readErr := os.ReadFile(path)
+		if readErr != nil {
+			discoveryErrors = append(discoveryErrors, fmt.Errorf("failed to read Chart.yaml at %s: %w", path, readErr))
+			return nil
 		}
 
+		var chartFile chart.ChartFile
+		if unmarshalErr := yaml.Unmarshal(chartData, &chartFile); unmarshalErr != nil {
+			discoveryErrors = append(discoveryErrors, fmt.Errorf("failed to parse Chart.yaml at %s: %w", path, unmarshalErr))
+			return nil
+		}
+
+		isSearchRootChart := filepath.Dir(path) == chartSearchRoot
+		if !isSearchRootChart && len(dependenciesFilter) > 0 && !dependenciesFilter[chartFile.Name] {
+			return nil
+		}
+
+		discovered = append(discovered, DiscoveredChart{Path: path, Chart: chartFile})
 		return nil
 	})
 	if err != nil {
-		errs <- err
+		discoveryErrors = append(discoveryErrors, err)
 	}
+
+	return discovered, discoveryErrors
 }
 
 func SearchArchivesOpenTemp(startPath string, errs chan<- error) string {
