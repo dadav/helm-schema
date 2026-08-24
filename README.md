@@ -370,8 +370,9 @@ When this flag is set:
 
 1. A dependency chart's pre-existing `values.schema.json` is used as-is and merged into the parent.
 2. That dependency's schema file is not overwritten on disk.
+3. The dependency's `values.yaml` is not parsed when its existing schema is valid.
 
-Without the flag, every discovered chart's schema is regenerated from its `values.yaml`.
+If the existing schema is missing or invalid, `helm-schema` falls back to regenerating it from `values.yaml`. Without the flag, every discovered chart's schema is regenerated from its `values.yaml`.
 
 ### Library Charts
 
@@ -449,15 +450,15 @@ helm-schema -n -k additionalProperties
 helm-schema -c examples -n -k additionalProperties
 ```
 
-If you'd like to use `helm-schema` on your chart dependencies as well, you have to build and unpack them before. You'll avoid the "missing dependency" error message.
+If you'd like to use `helm-schema` on your chart dependencies as well, build them before running `helm-schema`. Dependencies packaged as `.tgz` or `.tar.gz` files are extracted to a temporary directory automatically and do not need to be unpacked manually.
 
 ```sh
 # go where your Chart.lock/yaml is located
 cd <chart-name>
 
-# build dependencies and untar them
+# build dependencies
 helm dep build
-ls charts/*.tgz |xargs -n1 tar -C charts/ -xzf
+helm-schema
 ```
 
 #### `type`
