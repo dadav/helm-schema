@@ -114,7 +114,7 @@ The `processImportValues()` function handles Helm's `import-values` directive:
 - **Simple form** (`import-values: [defaults]`): Imports from `exports.defaults` in dependency to parent's root
 - **Complex form** (`import-values: [{child: "path", parent: "path"}]`): Explicit source and target paths
 - Properties are merged using `mergeSchemaProperties()`, which skips "global" and warns on conflicts
-- When import-values is used on a non-library dependency, the dependency is NOT auto-nested (user controls what's imported)
+- When import-values is used on an application dependency, imported properties are merged and the dependency is also nested under its name or alias, matching Helm's merged values.
 
 #### Schema Path Navigation (`pkg/schema/schema.go`)
 
@@ -278,7 +278,7 @@ After all merging/hoisting, each chart's final serialized schema is compiled aga
 
 4. **Library chart merging**: When a library chart property name conflicts with a parent property, the parent takes precedence (with a warning logged).
 
-5. **Import-values behavior**: When `import-values` is used on a non-library dependency, the dependency's full schema is NOT auto-nested under its name. Only explicitly imported properties appear in the parent schema. This matches Helm's behavior where import-values gives the user explicit control over what's imported.
+5. **Import-values behavior**: Application dependencies retain their nested schema under their name or alias even when `import-values` copies properties elsewhere in the parent. Helm retains both locations in its merged values, so omitting the nested schema can make the generated parent schema reject valid charts.
 
 6. **Comment parsing**: By default, descriptions are cut at the first empty line in comments. Use `-s` to keep full comments.
 
