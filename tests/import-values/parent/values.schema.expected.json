@@ -8,6 +8,61 @@
       "title": "appName",
       "type": "string"
     },
+    "child": {
+      "description": "A child chart with exports",
+      "properties": {
+        "exports": {
+          "additionalProperties": false,
+          "properties": {
+            "defaults": {
+              "additionalProperties": false,
+              "properties": {
+                "dbHost": {
+                  "default": "localhost",
+                  "description": "The database host",
+                  "title": "dbHost",
+                  "type": "string"
+                },
+                "dbPort": {
+                  "default": 5432,
+                  "description": "The database port",
+                  "title": "dbPort",
+                  "type": "integer"
+                },
+                "extraConfig": {
+                  "additionalProperties": true,
+                  "description": "Extra configuration options",
+                  "required": [],
+                  "title": "extraConfig",
+                  "type": "object"
+                }
+              },
+              "required": [],
+              "title": "defaults",
+              "type": "object"
+            }
+          },
+          "required": [],
+          "title": "exports",
+          "type": "object"
+        },
+        "global": {
+          "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+          "required": [],
+          "title": "global",
+          "type": "object"
+        },
+        "internalConfig": {
+          "default": "secret",
+          "description": "Internal config not exported",
+          "title": "internalConfig",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "child",
+      "type": "object"
+    },
     "dbHost": {
       "default": "localhost",
       "description": "The database host",

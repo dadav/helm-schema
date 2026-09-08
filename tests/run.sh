@@ -149,4 +149,9 @@ fi
 
 rm -rf "$check_dir"
 
+if ! bash ../test-helm-workflows.sh; then
+	echo "❌: Helm chart workflows"
+	rc=1
+fi
+
 exit "$rc"
