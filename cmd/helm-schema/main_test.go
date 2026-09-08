@@ -897,58 +897,48 @@ func TestParseConditionPaths(t *testing.T) {
 	tests := []struct {
 		name      string
 		condition string
-		depName   string
-		depAlias  string
 		expected  [][]string
 	}{
 		{
 			name:      "single dotted path",
 			condition: "foo.enabled",
-			depName:   "foo",
 			expected:  [][]string{{"foo", "enabled"}},
 		},
 		{
 			name:      "comma-separated fallbacks",
 			condition: "foo.enabled,bar.enabled",
-			depName:   "foo",
 			expected:  [][]string{{"foo", "enabled"}, {"bar", "enabled"}},
 		},
 		{
 			name:      "whitespace around comma parts",
 			condition: "foo.enabled , bar.enabled",
-			depName:   "foo",
 			expected:  [][]string{{"foo", "enabled"}, {"bar", "enabled"}},
 		},
 		{
-			name:      "alias maps to dependency name",
+			name:      "alias retained for parent context resolution",
 			condition: "myalias.enabled",
-			depName:   "foo",
-			depAlias:  "myalias",
-			expected:  [][]string{{"foo", "enabled"}},
+			expected:  [][]string{{"myalias", "enabled"}},
 		},
 		{
 			name:      "single-segment path is skipped",
 			condition: "enabled",
-			depName:   "foo",
 			expected:  nil,
 		},
 		{
 			name:      "deeply nested path",
 			condition: "foo.sub.enabled",
-			depName:   "foo",
 			expected:  [][]string{{"foo", "sub", "enabled"}},
 		},
 		{
 			name:      "empty condition",
 			condition: "",
-			depName:   "foo",
 			expected:  nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := parseConditionPaths(tt.condition, tt.depName, tt.depAlias)
+			got := parseConditionPaths(tt.condition)
 			assert.Equal(t, tt.expected, got)
 		})
 	}

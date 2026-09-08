@@ -2,90 +2,80 @@ package schema
 
 import (
 	"fmt"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"github.com/dadav/helm-schema/pkg/chart"
 )
 
-// TopoSort uses topological sorting to sort the results
-// If allowCircular is true, circular dependencies will be logged as warnings and results will be returned unsorted
-func TopoSort(results []*Result, allowCircular bool) ([]*Result, error) {
-	// Map chart names to their Result objects for easy lookup
-	chartMap := make(map[string]*Result)
-	for _, r := range results {
-		if r.Chart != nil {
-			chartMap[r.Chart.Name] = r
-		}
-	}
-
-	// Build dependency graph as adjacency list
-	deps := make(map[string][]string)
-
-	// Build dependency graph
-	for _, r := range results {
-		if r.Chart == nil {
+// TopoSort orders results using the same resolved bindings as schema merging.
+// Allowed cycles return all results in stable source order without ordering
+// dependencies. Results with worker errors are retained for the caller.
+func TopoSort(results []*Result, graph *chart.Graph, allowCircular bool) ([]*Result, error) {
+	byID := make(map[string]*Result, len(results))
+	ids := make([]string, 0, len(results))
+	for _, result := range results {
+		if result == nil {
 			continue
 		}
-
-		// Initialize empty dependency list
-		deps[r.Chart.Name] = []string{}
-
-		// Add all dependencies
-		for _, dep := range r.Chart.Dependencies {
-			deps[r.Chart.Name] = append(deps[r.Chart.Name], dep.Name)
+		if result.ChartPath == "" {
+			return nil, fmt.Errorf("cannot sort chart result without a source path")
 		}
+		path, err := filepath.Abs(result.ChartPath)
+		if err != nil {
+			return nil, err
+		}
+		id := graph.IDByPath[path]
+		if id == "" {
+			id = path
+		}
+		if _, exists := byID[id]; exists {
+			return nil, fmt.Errorf("duplicate chart result for source %s", id)
+		}
+		byID[id] = result
+		ids = append(ids, id)
 	}
+	slices.Sort(ids)
 
-	// Track visited nodes during traversal
-	visited := make(map[string]bool)
-	// Track nodes in current recursion stack to detect cycles
-	inStack := make(map[string]bool)
-	// Final sorted results
-	var sorted []*Result
-
-	// Recursive DFS helper function
+	state := make(map[string]int)
+	stack := []string{}
+	sorted := make([]*Result, 0, len(ids))
 	var visit func(string) error
-	visit = func(chart string) error {
-		// Check for cycle first, before the visited check
-		if inStack[chart] {
-			return &CircularError{fmt.Sprintf("circular dependency detected: %s", chart)}
+	visit = func(id string) error {
+		if state[id] == 1 {
+			cycle := append(slices.Clone(stack[slices.Index(stack, id):]), id)
+			return &CircularError{fmt.Sprintf("circular dependency detected: %s", strings.Join(cycle, " -> "))}
 		}
-
-		// Return if already visited
-		if visited[chart] {
+		if state[id] == 2 {
 			return nil
 		}
-
-		// Mark as being visited
-		inStack[chart] = true
-		visited[chart] = true
-
-		// Visit all dependencies first
-		for _, dep := range deps[chart] {
-			if err := visit(dep); err != nil {
+		state[id] = 1
+		stack = append(stack, id)
+		for _, child := range graph.Dependencies[id] {
+			if byID[child] == nil {
+				continue
+			}
+			if err := visit(child); err != nil {
 				return err
 			}
 		}
-
-		// Add to sorted results after dependencies
-		if result, exists := chartMap[chart]; exists {
-			sorted = append(sorted, result)
-		}
-
-		// Remove from recursion stack
-		inStack[chart] = false
+		stack = stack[:len(stack)-1]
+		state[id] = 2
+		sorted = append(sorted, byID[id])
 		return nil
 	}
-
-	// Visit all charts
-	for _, r := range results {
-		if r.Chart != nil {
-			if err := visit(r.Chart.Name); err != nil {
-				if allowCircular {
-					// Return unsorted results when circular dependencies are allowed
-					return results, nil
-				}
+	for _, id := range ids {
+		if err := visit(id); err != nil {
+			if !allowCircular {
 				return nil, err
 			}
+			fallback := make([]*Result, 0, len(ids))
+			for _, id := range ids {
+				fallback = append(fallback, byID[id])
+			}
+			return fallback, nil
 		}
 	}
-
 	return sorted, nil
 }

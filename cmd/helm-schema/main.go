@@ -26,7 +26,7 @@ import (
 func getDependencyNames(dependencies []*chart.Dependency, dependenciesFilterMap map[string]bool) []string {
 	var depNames []string
 	for _, dep := range dependencies {
-		if len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name] {
+		if dep == nil || (len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name]) {
 			continue
 		}
 		if dep.Alias != "" {
@@ -185,7 +185,7 @@ func processImportValues(
 // generation every fallback path is a valid location for the boolean, so all of
 // them are returned. Single-segment paths (e.g. "enabled") are skipped because
 // they cannot be nested under a dependency property.
-func parseConditionPaths(condition, depName, depAlias string) [][]string {
+func parseConditionPaths(condition string) [][]string {
 	var paths [][]string
 	for _, part := range strings.Split(condition, ",") {
 		part = strings.TrimSpace(part)
@@ -196,18 +196,36 @@ func parseConditionPaths(condition, depName, depAlias string) [][]string {
 		if len(conditionKeys) == 1 {
 			continue
 		}
-		targetName := conditionKeys[0]
-		if depAlias != "" && depAlias == conditionKeys[0] {
-			targetName = depName
-		}
-		if targetName == "" {
+		if conditionKeys[0] == "" {
 			continue
 		}
-		// Prepend targetName so the caller can key patches by target and reuse the
-		// remaining segments as the nested path.
-		paths = append(paths, append([]string{targetName}, conditionKeys[1:]...))
+		paths = append(paths, conditionKeys)
 	}
 	return paths
+}
+
+func conditionTargets(graph *chart.Graph, parentID string, depIndex int, prefix string) []string {
+	dependencies := graph.Charts[parentID].Chart.Dependencies
+	bindings := graph.Dependencies[parentID]
+	var targets []string
+	for index, sibling := range dependencies {
+		if sibling == nil || bindings[index] == "" {
+			continue
+		}
+		name := sibling.Name
+		if sibling.Alias != "" {
+			name = sibling.Alias
+		}
+		if name == prefix && !slices.Contains(targets, bindings[index]) {
+			targets = append(targets, bindings[index])
+		}
+	}
+	// Parent property names, including aliases, take precedence over the raw
+	// chart name. Retain raw-name conditions when no parent property matches.
+	if len(targets) == 0 && prefix == dependencies[depIndex].Name && bindings[depIndex] != "" {
+		targets = append(targets, bindings[depIndex])
+	}
+	return targets
 }
 
 // stubURLLoader resolves any external ($ref) URL to a permissive schema so that
@@ -292,7 +310,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 	resultsChan := make(chan schema.Result)
 	results := []*schema.Result{}
-	tempDir, archiveErrors := searching.DiscoverArchives(chartSearchRoot)
+	tempDir, archives, archiveErrors := searching.DiscoverArchivesWithSources(chartSearchRoot)
 	if tempDir != "" {
 		defer os.RemoveAll(tempDir)
 	}
@@ -303,11 +321,12 @@ func exec(cmd *cobra.Command, _ []string) error {
 		return errors.New("archive discovery failed")
 	}
 
-	discoveredCharts, discoveryErrors := searching.DiscoverCharts(
+	discoveredCharts, discoveryErrors := searching.DiscoverChartsWithSources(
 		chartSearchRoot,
 		chartSearchRoot,
 		"Chart.yaml",
 		dependenciesFilterMap,
+		archives,
 	)
 	for _, discoveryErr := range discoveryErrors {
 		log.Error(discoveryErr)
@@ -316,23 +335,19 @@ func exec(cmd *cobra.Command, _ []string) error {
 		return errors.New("chart discovery failed")
 	}
 
-	// Identify dependencies before values processing so flags that skip or reuse
-	// dependency schemas can prevent dependency values from entering workers.
-	isDependencyChart := make(map[string]bool)
-	for _, discovered := range discoveredCharts {
-		for _, dep := range discovered.Chart.Dependencies {
-			isDependencyChart[dep.Name] = true
-		}
+	graph, err := chart.ResolveGraph(discoveredCharts, dependenciesFilterMap)
+	if err != nil {
+		return err
 	}
 
 	workerChartPaths := make([]string, 0, len(discoveredCharts))
 	for _, discovered := range discoveredCharts {
-		if noDeps && isDependencyChart[discovered.Chart.Name] {
+		if noDeps && graph.IsDependency[discovered.ID] {
 			log.Debugf("Skipping dependency chart %s (--no-dependencies)", discovered.Chart.Name)
 			continue
 		}
 
-		if !annotate && keepExistingDepSchemas && isDependencyChart[discovered.Chart.Name] {
+		if !annotate && keepExistingDepSchemas && graph.IsDependency[discovered.ID] {
 			schemaPath := filepath.Join(filepath.Dir(discovered.Path), outFile)
 			schemaData, readErr := os.ReadFile(schemaPath)
 			if readErr == nil {
@@ -400,85 +415,69 @@ func exec(cmd *cobra.Command, _ []string) error {
 	for res := range resultsChan {
 		results = append(results, &res)
 	}
+	slices.SortFunc(results, func(a, b *schema.Result) int {
+		return strings.Compare(graph.IDByPath[a.ChartPath], graph.IDByPath[b.ChartPath])
+	})
 
-	// In annotate mode, just report errors and return (no schema generation)
+	// Report every worker failure before sorting, including results whose chart
+	// metadata could not be read. A cycle must not hide an input error.
+	foundErrors := false
+	for _, result := range results {
+		if len(result.Errors) == 0 {
+			continue
+		}
+		foundErrors = true
+		entry := log.WithFields(log.Fields{
+			"chart_source": graph.IDByPath[result.ChartPath],
+			"chart_path":   result.ChartPath,
+			"error_count":  len(result.Errors),
+		})
+		for _, err := range result.Errors {
+			entry.Error(err)
+		}
+	}
+	if foundErrors {
+		return errors.New("some errors were found")
+	}
 	if annotate {
-		foundErrors := false
-		for _, result := range results {
-			if len(result.Errors) > 0 {
-				foundErrors = true
-				if result.Chart != nil {
-					log.Errorf("Found %d errors while annotating chart %s (%s)", len(result.Errors), result.Chart.Name, result.ChartPath)
-				} else {
-					log.Errorf("Found %d errors while annotating chart %s", len(result.Errors), result.ChartPath)
-				}
-				for _, err := range result.Errors {
-					log.Error(err)
-				}
-			}
-		}
-		if foundErrors {
-			return errors.New("some errors were found")
-		}
 		return nil
 	}
 
 	if !noDeps {
-		results, err = schema.TopoSort(results, allowCircularDeps)
+		results, err = schema.TopoSort(results, graph, allowCircularDeps)
 		if err != nil {
-			if _, ok := err.(*schema.CircularError); ok {
-				log.Errorf("Error while sorting results: %s", err)
-				return err
-			} else {
-				log.Warnf("Could not sort results: %s", err)
-			}
+			return err
 		}
 	}
 
 	conditionsToPatch := make(map[string][][]string)
 	if !noDeps {
 		for _, result := range results {
-			if len(result.Errors) > 0 {
+			if result.Chart == nil {
 				continue
 			}
-			for _, dep := range result.Chart.Dependencies {
-				if len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name] {
+			parentID := graph.IDByPath[result.ChartPath]
+			for index, dep := range result.Chart.Dependencies {
+				if dep == nil || (len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name]) {
 					continue
 				}
 
 				if dep.Condition != "" {
-					for _, path := range parseConditionPaths(dep.Condition, dep.Name, dep.Alias) {
-						targetName := path[0]
-						conditionsToPatch[targetName] = append(conditionsToPatch[targetName], path[1:])
+					for _, path := range parseConditionPaths(dep.Condition) {
+						for _, target := range conditionTargets(graph, parentID, index, path[0]) {
+							conditionsToPatch[target] = append(conditionsToPatch[target], path[1:])
+						}
 					}
 				}
 			}
 		}
 	}
 
-	chartNameToResult := make(map[string]*schema.Result)
-	foundErrors := false
+	chartIDToResult := make(map[string]*schema.Result)
 	staleFound := false
 
 	for _, result := range results {
-		if len(result.Errors) > 0 {
-			foundErrors = true
-			if result.Chart != nil {
-				log.Errorf(
-					"Found %d errors while processing the chart %s (%s)",
-					len(result.Errors),
-					result.Chart.Name,
-					result.ChartPath,
-				)
-			} else {
-				log.Errorf("Found %d errors while processing the chart %s", len(result.Errors), result.ChartPath)
-			}
-			for _, err := range result.Errors {
-				log.Error(err)
-			}
-			continue
-		}
-
+		resultID := graph.IDByPath[result.ChartPath]
 		if result.Chart == nil {
 			log.Warnf("Skipping result with nil Chart at path: %s", result.ChartPath)
 			continue
@@ -486,10 +485,7 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 		log.Debugf("Processing result for chart: %s (%s)", result.Chart.Name, result.ChartPath)
 		if !noDeps {
-			chartNameToResult[result.Chart.Name] = result
-			log.Debugf("Stored chart %s in chartNameToResult", result.Chart.Name)
-
-			if patches, ok := conditionsToPatch[result.Chart.Name]; ok {
+			if patches, ok := conditionsToPatch[resultID]; ok {
 				for _, patch := range patches {
 					schemaToPatch := &result.Schema
 					lastIndex := len(patch) - 1
@@ -525,13 +521,13 @@ func exec(cmd *cobra.Command, _ []string) error {
 				}
 			}
 
-			for _, dep := range result.Chart.Dependencies {
-				if len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name] {
+			for index, dep := range result.Chart.Dependencies {
+				if dep == nil || (len(dependenciesFilterMap) > 0 && !dependenciesFilterMap[dep.Name]) {
 					continue
 				}
 
 				if dep.Name != "" {
-					if dependencyResult, ok := chartNameToResult[dep.Name]; ok {
+					if dependencyResult, ok := chartIDToResult[graph.Dependencies[resultID][index]]; ok {
 						log.Debugf(
 							"Found chart of dependency %s (%s)",
 							dependencyResult.Chart.Name,
@@ -592,6 +588,8 @@ func exec(cmd *cobra.Command, _ []string) error {
 			}
 		}
 
+		chartIDToResult[resultID] = result
+
 		// Handle skip-dependencies-schema-validation flag
 		if skipDepsSchemaValidation && !noDeps {
 			// Collect dependency names using helper function
@@ -649,11 +647,8 @@ func exec(cmd *cobra.Command, _ []string) error {
 		if check {
 			// Archived charts only have temporary generated output; changes to their
 			// schemas are checked through the persistent parent schema instead.
-			if tempDir != "" {
-				relativePath, err := filepath.Rel(tempDir, result.ChartPath)
-				if err == nil && filepath.IsLocal(relativePath) {
-					continue
-				}
+			if graph.Charts[resultID].Archived {
+				continue
 			}
 			chartBasePath := filepath.Dir(result.ChartPath)
 			existing, err := os.ReadFile(filepath.Join(chartBasePath, outFile))

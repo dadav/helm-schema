@@ -454,7 +454,18 @@ By default, `helm-schema` generates schemas for discovered dependencies as well 
 
 For unpacked dependencies, generated schema files are written to their directories. Packaged dependencies are extracted temporarily for generation and merging; the original archives are not rewritten, and extracted files are removed when the command finishes.
 
-Use `-n, --no-dependencies` to generate schemas only for parent charts. Any discovered chart declared as a dependency of another discovered chart is skipped: its schema is neither generated nor merged into its parent. Properties already present in the parent's values file still contribute to the parent schema.
+Charts in different directories remain distinct even when their names and versions are identical. Each archive, including nested dependency archives, is extracted separately so repeated archive member names cannot overwrite another chart.
+
+Dependencies are matched by their declared name and version constraint in this order:
+
+1. Installed dependencies under the owning chart's `charts/` directory, including archives.
+2. A discovered chart at the declared `file://` path, relative to the owning chart.
+3. Other local children whose nearest containing chart is the owner, for legacy directory layouts.
+4. A unique matching chart elsewhere under the search root, for compatibility with repositories that share chart sources.
+
+The first tier with matching candidates wins. Multiple matches at that tier fail with the parent and candidate source paths before values or schemas are modified. Version ranges follow Helm's semantic version matching; an omitted version applies no version constraint. Invalid version constraints fail explicitly. A dependency with no matching chart produces a warning and is omitted from merging, as before. Aliases choose the dependency's property name in the parent schema and do not change source identity. Local paths do not expand discovery outside the search root, and the generator does not download dependencies.
+
+Use `-n, --no-dependencies` to generate schemas only for parent charts. Each resolved dependency chart is skipped: its schema is neither generated nor merged into its parent. Unrelated charts with the same name remain eligible for generation. Properties already present in the parent's values file still contribute to the parent schema.
 
 ### Reusing a Dependency's Pre-existing Schema
 
@@ -529,7 +540,7 @@ If you want to explicitly allow circular dependencies and acknowledge this behav
 helm-schema -w
 ```
 
-When this flag is enabled, sorting returns the collected results without dependency ordering. Dependency merges can consequently be incomplete. The current implementation does not emit a cycle warning in this mode.
+When this flag is enabled, sorting returns every result in stable source-path order without dependency ordering. Dependency merges can consequently be incomplete. The current implementation does not emit a cycle warning in this mode.
 
 **Note:** This is primarily useful when charts have cross-dependencies purely for value sharing, not for actual build order dependencies.
 

@@ -3,6 +3,7 @@ module github.com/dadav/helm-schema
 go 1.26.0
 
 require (
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/dadav/go-jsonpointer v0.0.0-20240918181927-335cbee8c279
 	github.com/magiconair/properties v1.18.11
 	github.com/norwoodj/helm-docs v1.14.2
@@ -17,7 +18,6 @@ require (
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect

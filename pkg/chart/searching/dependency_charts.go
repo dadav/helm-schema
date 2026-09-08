@@ -13,9 +13,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type DiscoveredChart struct {
-	Path  string
-	Chart chart.ChartFile
+type DiscoveredChart = chart.Instance
+
+type ExtractedArchive struct {
+	Directory  string
+	SourcePath string
 }
 
 func extractTGZ(src, dest string) error {
@@ -105,10 +107,25 @@ func SearchFiles(chartSearchRoot, startPath, fileName string, dependenciesFilter
 // DiscoverCharts reads chart metadata before values files are processed. This
 // lets callers decide which charts should enter the schema worker pipeline.
 func DiscoverCharts(chartSearchRoot, startPath, fileName string, dependenciesFilter map[string]bool) ([]DiscoveredChart, []error) {
+	return DiscoverChartsWithSources(chartSearchRoot, startPath, fileName, dependenciesFilter, nil)
+}
+
+// DiscoverChartsWithSources preserves archive provenance even though workers
+// read chart files from temporary extraction directories.
+func DiscoverChartsWithSources(chartSearchRoot, startPath, fileName string, dependenciesFilter map[string]bool, archives []ExtractedArchive) ([]DiscoveredChart, []error) {
 	discovered := []DiscoveredChart{}
 	discoveryErrors := []error{}
+	var err error
+	chartSearchRoot, err = filepath.Abs(chartSearchRoot)
+	if err != nil {
+		return nil, []error{err}
+	}
+	startPath, err = filepath.Abs(startPath)
+	if err != nil {
+		return nil, []error{err}
+	}
 
-	err := filepath.Walk(startPath, func(path string, info os.FileInfo, walkErr error) error {
+	err = filepath.Walk(startPath, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			discoveryErrors = append(discoveryErrors, walkErr)
 			return nil
@@ -129,27 +146,95 @@ func DiscoverCharts(chartSearchRoot, startPath, fileName string, dependenciesFil
 			return nil
 		}
 
-		isSearchRootChart := filepath.Dir(path) == chartSearchRoot
-		if !isSearchRootChart && len(dependenciesFilter) > 0 && !dependenciesFilter[chartFile.Name] {
-			return nil
+		instance := DiscoveredChart{ID: path, Path: path, Chart: chartFile}
+		for _, archive := range archives {
+			rel, err := filepath.Rel(archive.Directory, path)
+			if err == nil && filepath.IsLocal(rel) {
+				instance.ID = filepath.Join(archive.SourcePath, rel)
+				instance.Archived = true
+				break
+			}
 		}
-
-		discovered = append(discovered, DiscoveredChart{Path: path, Chart: chartFile})
+		discovered = append(discovered, instance)
 		return nil
 	})
 	if err != nil {
 		discoveryErrors = append(discoveryErrors, err)
 	}
 
-	return discovered, discoveryErrors
+	owners := chart.ChartOwners(discovered)
+	selected := make([]DiscoveredChart, 0, len(discovered))
+	for _, instance := range discovered {
+		instance.OwnerID = owners[instance.ID]
+		isSearchRootChart := filepath.Dir(instance.Path) == chartSearchRoot
+		if !isSearchRootChart && len(dependenciesFilter) > 0 && !dependenciesFilter[instance.Chart.Name] {
+			continue
+		}
+		selected = append(selected, instance)
+	}
+	return selected, discoveryErrors
 }
 
 // DiscoverArchives extracts archives and returns every discovery error. The caller
 // must remove the returned temporary directory, including when errors occur.
 func DiscoverArchives(startPath string) (string, []error) {
-	tempDir := ""
+	tempDir, _, errs := DiscoverArchivesWithSources(startPath)
+	return tempDir, errs
+}
+
+// DiscoverArchivesWithSources isolates every archive and records stable source
+// paths, including nested archives. The caller owns cleanup of tempDir.
+func DiscoverArchivesWithSources(startPath string) (string, []ExtractedArchive, []error) {
+	startPath, err := filepath.Abs(startPath)
+	if err != nil {
+		return "", nil, []error{err}
+	}
+	paths, discoveryErrors := findArchives(startPath)
+	if len(paths) == 0 {
+		return "", nil, discoveryErrors
+	}
+	tempDir, err := os.MkdirTemp(filepath.Dir(paths[0]), "tmp-*")
+	if err != nil {
+		return "", nil, append(discoveryErrors, fmt.Errorf("failed to create chart extraction directory: %w", err))
+	}
+	type archiveSource struct {
+		path   string
+		source string
+	}
+	queue := make([]archiveSource, 0, len(paths))
+	for _, path := range paths {
+		queue = append(queue, archiveSource{path: path, source: path})
+	}
+	archives := []ExtractedArchive{}
+	for index := 0; index < len(queue); index++ {
+		archive := queue[index]
+		directory := filepath.Join(tempDir, fmt.Sprintf("archive-%d", index))
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			discoveryErrors = append(discoveryErrors, fmt.Errorf("failed to create extraction directory for %s: %w", archive.source, err))
+			continue
+		}
+		if err := extractTGZ(archive.path, directory); err != nil {
+			discoveryErrors = append(discoveryErrors, fmt.Errorf("failed to extract %s: %w", archive.source, err))
+			continue
+		}
+		archives = append(archives, ExtractedArchive{Directory: directory, SourcePath: archive.source})
+		nestedPaths, nestedErrors := findArchives(directory)
+		discoveryErrors = append(discoveryErrors, nestedErrors...)
+		for _, path := range nestedPaths {
+			rel, err := filepath.Rel(directory, path)
+			if err != nil {
+				discoveryErrors = append(discoveryErrors, err)
+				continue
+			}
+			queue = append(queue, archiveSource{path: path, source: filepath.Join(archive.source, rel)})
+		}
+	}
+	return tempDir, archives, discoveryErrors
+}
+
+func findArchives(startPath string) ([]string, []error) {
+	paths := []string{}
 	discoveryErrors := []error{}
-	tempDirCreationFailed := false
 	err := filepath.Walk(startPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			discoveryErrors = append(discoveryErrors, err)
@@ -159,32 +244,14 @@ func DiscoverArchives(startPath string) (string, []error) {
 			return nil
 		}
 		if strings.HasSuffix(info.Name(), ".tgz") || strings.HasSuffix(info.Name(), ".tar.gz") {
-			// Skip extraction if temp dir creation previously failed
-			if tempDirCreationFailed {
-				return nil
-			}
-			// Extract archived charts from deps
-			if tempDir == "" {
-				relativeDir := filepath.Dir(path)
-				var mkdirErr error
-				tempDir, mkdirErr = os.MkdirTemp(relativeDir, "tmp-*")
-				if mkdirErr != nil {
-					discoveryErrors = append(discoveryErrors, fmt.Errorf("failed to create temp directory for chart extraction at %s: %w", relativeDir, mkdirErr))
-					tempDirCreationFailed = true
-					return nil
-				}
-			}
-			if extractErr := extractTGZ(path, tempDir); extractErr != nil {
-				discoveryErrors = append(discoveryErrors, fmt.Errorf("failed to extract %s: %w", path, extractErr))
-				return nil
-			}
+			paths = append(paths, path)
 		}
 		return nil
 	})
 	if err != nil {
 		discoveryErrors = append(discoveryErrors, err)
 	}
-	return tempDir, discoveryErrors
+	return paths, discoveryErrors
 }
 
 // SearchArchivesOpenTemp retains the channel-based API. Callers must consume errs

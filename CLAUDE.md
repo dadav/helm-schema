@@ -90,7 +90,10 @@ go mod tidy
 
 #### Dependency Graph (`pkg/schema/toposort.go`)
 
-- **TopoSort()**: Uses DFS-based topological sorting to ensure dependencies are processed before dependents
+- **Chart identity**: Use a cleaned absolute source path, never `Chart.Name` or name plus version, as chart identity. Archived identities include the original archive path and member path, including nested archive ancestry; physical extraction paths are only for file access.
+- **Shared resolution**: `chart.ResolveGraph()` binds parent dependency declarations by index before workers run. Reuse those bindings for dependency classification, condition patches, sorting, and merging. Resolve installed children, explicit local sources, legacy local children, then a unique repository-wide match, in that order. Ambiguous matches fail before workers run.
+- **Ownership and aliases**: Record each chart's nearest containing source before dependency filtering. Resolve condition prefixes in the parent's alias namespace before using raw chart names.
+- **TopoSort()**: Accepts the resolved graph and uses DFS-based topological sorting to ensure dependencies are processed before dependents; source-path ordering breaks ties independently of worker completion order
 - Detects circular dependencies and can either fail or warn based on `allowCircular` flag
 - Returns charts in dependency order (dependencies first, parents last)
 
