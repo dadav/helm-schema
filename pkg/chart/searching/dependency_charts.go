@@ -144,12 +144,18 @@ func DiscoverCharts(chartSearchRoot, startPath, fileName string, dependenciesFil
 	return discovered, discoveryErrors
 }
 
-func SearchArchivesOpenTemp(startPath string, errs chan<- error) string {
+// DiscoverArchives extracts archives and returns every discovery error. The caller
+// must remove the returned temporary directory, including when errors occur.
+func DiscoverArchives(startPath string) (string, []error) {
 	tempDir := ""
+	discoveryErrors := []error{}
 	tempDirCreationFailed := false
 	err := filepath.Walk(startPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			errs <- err
+			discoveryErrors = append(discoveryErrors, err)
+			return nil
+		}
+		if info.IsDir() {
 			return nil
 		}
 		if strings.HasSuffix(info.Name(), ".tgz") || strings.HasSuffix(info.Name(), ".tar.gz") {
@@ -163,19 +169,29 @@ func SearchArchivesOpenTemp(startPath string, errs chan<- error) string {
 				var mkdirErr error
 				tempDir, mkdirErr = os.MkdirTemp(relativeDir, "tmp-*")
 				if mkdirErr != nil {
-					errs <- fmt.Errorf("failed to create temp directory for chart extraction: %w", mkdirErr)
+					discoveryErrors = append(discoveryErrors, fmt.Errorf("failed to create temp directory for chart extraction at %s: %w", relativeDir, mkdirErr))
 					tempDirCreationFailed = true
 					return nil
 				}
 			}
 			if extractErr := extractTGZ(path, tempDir); extractErr != nil {
-				errs <- fmt.Errorf("failed to extract %s: %w", path, extractErr)
+				discoveryErrors = append(discoveryErrors, fmt.Errorf("failed to extract %s: %w", path, extractErr))
 				return nil
 			}
 		}
 		return nil
 	})
 	if err != nil {
+		discoveryErrors = append(discoveryErrors, err)
+	}
+	return tempDir, discoveryErrors
+}
+
+// SearchArchivesOpenTemp retains the channel-based API. Callers must consume errs
+// concurrently; new callers can use DiscoverArchives to collect errors directly.
+func SearchArchivesOpenTemp(startPath string, errs chan<- error) string {
+	tempDir, discoveryErrors := DiscoverArchives(startPath)
+	for _, err := range discoveryErrors {
 		errs <- err
 	}
 	return tempDir

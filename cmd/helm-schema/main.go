@@ -292,11 +292,15 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 	resultsChan := make(chan schema.Result)
 	results := []*schema.Result{}
-	errs := make(chan error, 100) // Buffered to prevent deadlock when errors occur before goroutines start
-
-	tempDir := searching.SearchArchivesOpenTemp(chartSearchRoot, errs)
+	tempDir, archiveErrors := searching.DiscoverArchives(chartSearchRoot)
 	if tempDir != "" {
 		defer os.RemoveAll(tempDir)
+	}
+	for _, archiveErr := range archiveErrors {
+		log.Error(archiveErr)
+	}
+	if len(archiveErrors) > 0 {
+		return errors.New("archive discovery failed")
 	}
 
 	discoveredCharts, discoveryErrors := searching.DiscoverCharts(
@@ -393,34 +397,8 @@ func exec(cmd *cobra.Command, _ []string) error {
 		close(resultsChan)
 	}()
 
-	// Collect results and errors until both channels are closed
-	resultsChanOpen := true
-	for resultsChanOpen {
-		select {
-		case err, ok := <-errs:
-			if ok {
-				log.Error(err)
-			}
-		case res, ok := <-resultsChan:
-			if !ok {
-				resultsChanOpen = false
-			} else {
-				results = append(results, &res)
-			}
-		}
-	}
-
-	// Drain any remaining errors
-drainErrors:
-	for {
-		select {
-		case err, ok := <-errs:
-			if ok {
-				log.Error(err)
-			}
-		default:
-			break drainErrors
-		}
+	for res := range resultsChan {
+		results = append(results, &res)
 	}
 
 	// In annotate mode, just report errors and return (no schema generation)
@@ -567,7 +545,6 @@ drainErrors:
 							dep,
 							result.Chart.Name,
 						)
-						hasImportValues := len(dep.ImportValues) > 0
 
 						// Check if this is a library chart
 						if dependencyResult.Chart.Type == "library" {
@@ -580,9 +557,8 @@ drainErrors:
 								fmt.Sprintf("library chart %s", dep.Name),
 								fmt.Sprintf("parent chart %s", result.Chart.Name),
 							)
-						} else if !hasImportValues {
-							// For non-library charts WITHOUT import-values, nest under dependency name
-							// (If import-values is used, user explicitly controls what's imported)
+						} else {
+							// Helm retains nested dependency values even when import-values is used.
 							// depSchema shares dependencyResult's Properties map; DisableRequiredProperties
 							// mutates it. Safe only because TopoSort writes each dependency's own schema
 							// file before any parent reaches this point, and the mutation is idempotent.
@@ -671,6 +647,14 @@ drainErrors:
 		}
 
 		if check {
+			// Archived charts only have temporary generated output; changes to their
+			// schemas are checked through the persistent parent schema instead.
+			if tempDir != "" {
+				relativePath, err := filepath.Rel(tempDir, result.ChartPath)
+				if err == nil && filepath.IsLocal(relativePath) {
+					continue
+				}
+			}
 			chartBasePath := filepath.Dir(result.ChartPath)
 			existing, err := os.ReadFile(filepath.Join(chartBasePath, outFile))
 			if err != nil || !bytes.Equal(existing, jsonStr) {

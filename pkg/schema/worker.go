@@ -98,15 +98,19 @@ func Worker(
 		}
 
 		// Check if we need to add a schema reference
-		if addSchemaReference && !dryRun {
-			schemaRef := `# yaml-language-server: $schema=values.schema.json`
-			if !strings.Contains(string(content), schemaRef) {
-				err = util.PrefixFirstYamlDocument(schemaRef, valuesPath)
-				if err != nil {
-					result.Errors = append(result.Errors, err)
-					results <- result
-					continue
-				}
+		if addSchemaReference && !dryRun && !hasSchemaReference(string(content)) {
+			schemaPath := filepath.Join(chartBasePath, outFile)
+			relativePath, err := filepath.Rel(filepath.Dir(valuesPath), schemaPath)
+			if err != nil {
+				result.Errors = append(result.Errors, fmt.Errorf("failed to make schema path %s relative to %s: %w", schemaPath, valuesPath, err))
+				results <- result
+				continue
+			}
+			schemaRef := "# yaml-language-server: $schema=" + filepath.ToSlash(relativePath)
+			if err := util.PrefixFirstYamlDocument(schemaRef, valuesPath); err != nil {
+				result.Errors = append(result.Errors, err)
+				results <- result
+				continue
 			}
 		}
 
@@ -162,4 +166,18 @@ func Worker(
 
 		results <- result
 	}
+}
+
+func hasSchemaReference(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		comment, ok := strings.CutPrefix(strings.TrimSpace(line), "#")
+		if !ok {
+			continue
+		}
+		directive, ok := strings.CutPrefix(strings.TrimSpace(comment), "yaml-language-server:")
+		if ok && strings.Contains(directive, "$schema=") {
+			return true
+		}
+	}
+	return false
 }

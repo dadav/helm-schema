@@ -9,6 +9,8 @@ import (
 // mergeValuesDocuments merges YAML documents using Helm-style precedence:
 // later files override earlier files, and nested mappings merge recursively.
 func mergeValuesDocuments(base *yaml.Node, overlay *yaml.Node) (*yaml.Node, error) {
+	base = normalizeEmptyValuesDocument(base)
+	overlay = normalizeEmptyValuesDocument(overlay)
 	if base == nil {
 		return cloneYAMLNode(overlay), nil
 	}
@@ -34,6 +36,31 @@ func mergeValuesDocuments(base *yaml.Node, overlay *yaml.Node) (*yaml.Node, erro
 	merged.Content[0] = mergedContent
 
 	return merged, nil
+}
+
+// Helm treats empty and top-level null values files as empty maps. Nested nulls
+// remain values and must not be normalized during recursive merging.
+func normalizeEmptyValuesDocument(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	if node.Kind == 0 {
+		document := *node
+		document.Kind = yaml.DocumentNode
+		document.Content = []*yaml.Node{{Kind: yaml.MappingNode, Tag: "!!map"}}
+		return &document
+	}
+	if node.Kind == yaml.DocumentNode && len(node.Content) == 1 && node.Content[0].Tag == "!!null" {
+		document := *node
+		mapping := *node.Content[0]
+		mapping.Kind = yaml.MappingNode
+		mapping.Tag = "!!map"
+		mapping.Value = ""
+		mapping.Style = 0
+		document.Content = []*yaml.Node{&mapping}
+		return &document
+	}
+	return node
 }
 
 func mergeValuesNodes(base *yaml.Node, overlay *yaml.Node) (*yaml.Node, error) {
