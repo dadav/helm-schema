@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWorker(t *testing.T) {
@@ -149,6 +150,83 @@ key1: value1
 				assert.NotEmpty(t, result.ValuesPath)
 				assert.NotNil(t, result.Schema)
 			}
+		})
+	}
+}
+
+func TestWorker_EmptyValuesFiles(t *testing.T) {
+	populated := "# @schema\n# type: integer\n# required: true\n# @schema\nreplicas: 1\nnullable: null\n"
+	for _, empty := range []struct{ name, content string }{
+		{"empty", ""},
+		{"comment", "# No overrides\n"},
+		{"document", "---\n"},
+		{"null", "null\n"},
+		{"mapping", "{}\n"},
+	} {
+		for _, order := range []string{"base", "overlay", "only"} {
+			t.Run(empty.name+"/"+order, func(t *testing.T) {
+				root := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(root, "Chart.yaml"), []byte("apiVersion: v2\nname: demo\nversion: 1.0.0\n"), 0o644))
+				require.NoError(t, os.WriteFile(filepath.Join(root, "empty.yaml"), []byte(empty.content), 0o644))
+				require.NoError(t, os.WriteFile(filepath.Join(root, "values.yaml"), []byte(populated), 0o644))
+				files := []string{"empty.yaml", "values.yaml"}
+				if order == "overlay" {
+					files = []string{"values.yaml", "empty.yaml"}
+				} else if order == "only" {
+					files = []string{"empty.yaml"}
+				}
+				queue := make(chan string, 1)
+				results := make(chan Result, 1)
+				queue <- filepath.Join(root, "Chart.yaml")
+				close(queue)
+				Worker(false, false, false, false, false, false, false, false, files, &SkipAutoGenerationConfig{}, "values.schema.json", queue, results)
+				result := <-results
+				require.Empty(t, result.Errors)
+				assert.Equal(t, StringOrArrayOfString{"object"}, result.Schema.Type)
+				assert.Contains(t, result.Schema.Properties, "global")
+				assert.Equal(t, "http://json-schema.org/draft-07/schema#", result.Schema.Schema)
+				if order != "only" {
+					require.Contains(t, result.Schema.Properties, "replicas")
+					assert.Equal(t, StringOrArrayOfString{"integer"}, result.Schema.Properties["replicas"].Type)
+					assert.Contains(t, result.Schema.Required.Strings, "replicas")
+					assert.Equal(t, StringOrArrayOfString{"null"}, result.Schema.Properties["nullable"].Type)
+				}
+			})
+		}
+	}
+}
+
+func TestWorker_SchemaReferencePaths(t *testing.T) {
+	for _, test := range []struct {
+		name, valuesPath, outputPath, existing, reference string
+	}{
+		{name: "default", valuesPath: "values.yaml", outputPath: "values.schema.json", reference: "values.schema.json"},
+		{name: "custom", valuesPath: "values.yaml", outputPath: "custom.schema.json", reference: "custom.schema.json"},
+		{name: "nested values and schema", valuesPath: "config/values.yaml", outputPath: "schemas/custom.json", reference: "../schemas/custom.json"},
+		{name: "existing directive", valuesPath: "values.yaml", outputPath: "custom.schema.json", existing: "# yaml-language-server: $schema=https://example.com/schema.json\n", reference: "https://example.com/schema.json"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			chartPath := filepath.Join(root, "Chart.yaml")
+			valuesPath := filepath.Join(root, test.valuesPath)
+			require.NoError(t, os.WriteFile(chartPath, []byte("apiVersion: v2\nname: demo\nversion: 1.0.0\n"), 0o644))
+			require.NoError(t, os.MkdirAll(filepath.Dir(valuesPath), 0o755))
+			require.NoError(t, os.WriteFile(valuesPath, []byte(test.existing+"replicas: 1\n"), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(root, "second.yaml"), []byte("replicas: 2\n"), 0o644))
+			for range 2 {
+				queue := make(chan string, 1)
+				results := make(chan Result, 1)
+				queue <- chartPath
+				close(queue)
+				Worker(false, false, true, false, false, false, false, false, []string{test.valuesPath, "second.yaml"}, &SkipAutoGenerationConfig{}, test.outputPath, queue, results)
+				require.Empty(t, (<-results).Errors)
+			}
+			content, err := os.ReadFile(valuesPath)
+			require.NoError(t, err)
+			assert.Equal(t, "# yaml-language-server: $schema="+test.reference+"\nreplicas: 1\n", string(content))
+			second, err := os.ReadFile(filepath.Join(root, "second.yaml"))
+			require.NoError(t, err)
+			assert.Equal(t, "replicas: 2\n", string(second))
 		})
 	}
 }
