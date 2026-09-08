@@ -43,13 +43,13 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	}
 
 	logLevelUsage := fmt.Sprintf(
-		"level of logs that should printed, one of (%s)",
+		"level of logs that should be printed, one of (%s)",
 		strings.Join(possibleLogLevels(), ", "),
 	)
 	cmd.PersistentFlags().
 		StringP("chart-search-root", "c", ".", "directory to search recursively within for charts")
 	cmd.PersistentFlags().
-		BoolP("dry-run", "d", false, "don't actually create files just print to stdout passed")
+		BoolP("dry-run", "d", false, "print generated output without modifying values or schema files")
 	cmd.PersistentFlags().
 		BoolP("append-newline", "a", false, "append newline to generated jsonschema at the end of the file")
 	cmd.PersistentFlags().
@@ -66,7 +66,7 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 		BoolP("add-schema-reference", "r", false, "add reference to schema in values.yaml if not found")
 	cmd.PersistentFlags().StringP("log-level", "l", "info", logLevelUsage)
 	cmd.PersistentFlags().
-		StringSliceP("value-files", "f", []string{"values.yaml"}, "filenames to check for chart values")
+		StringSliceP("value-files", "f", []string{"values.yaml"}, "values filenames relative to each chart; merge all matches in the order provided")
 	cmd.PersistentFlags().
 		StringP("output-file", "o", "values.schema.json", "jsonschema file path relative to each chart directory to which jsonschema will be written")
 	cmd.PersistentFlags().
@@ -78,7 +78,7 @@ func newCommand(run func(cmd *cobra.Command, args []string) error) (*cobra.Comma
 	cmd.PersistentFlags().
 		BoolP("skip-dependencies-schema-validation", "m", false, "skip schema validation for dependencies by setting additionalProperties to true and removing from required")
 	cmd.PersistentFlags().
-		BoolP("allow-circular-dependencies", "w", false, "allow circular dependencies between charts (will log a warning instead of failing)")
+		BoolP("allow-circular-dependencies", "w", false, "allow circular dependencies without dependency ordering; merges may be incomplete")
 	cmd.PersistentFlags().
 		BoolP("annotate", "A", false, "write inferred @schema annotations into values.yaml files for unannotated keys")
 	cmd.PersistentFlags().
