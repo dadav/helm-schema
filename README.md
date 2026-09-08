@@ -11,24 +11,24 @@
   <a href="https://goreportcard.com/badge/github.com/dadav/helm-schema"><img src="https://goreportcard.com/badge/github.com/dadav/helm-schema" alt="Go Report"></a>
 </p>
 
-<p align="center">This tool tries to help you to easily create some nice <a href="https://json-schema.org/" target="_blank"><strong>JSON schema</strong></a> for your helm chart.</p>
+`helm-schema` generates `values.schema.json` from Helm values and `@schema` comments, giving chart users editor completion and validation through Helm.
 
-By default it will traverse the current directory and look for `Chart.yaml` files.
-For every file, helm-schema will try to find one of the given value filenames.
-The first files found will be read and a jsonschema will be created.
-For every dependency defined in the `Chart.yaml` file, a reference to the dependencies JSON schema
-will be created.
+By default it recursively finds `Chart.yaml` files below the current directory and generates a schema from each chart's `values.yaml`. With multiple `--value-files`, it merges all matching files in the supplied order; later files take precedence. Discovered application dependencies are included under their chart name or alias in the parent's schema.
+
+[Quickstart](#quickstart) · [Usage](#usage) · [Annotations](#annotations) · [Dependencies](#dependencies) · [CI checks](#check-mode-ci)
 
 > [!NOTE]
 > The tool uses `jsonschema` Draft 7, because the library helm uses only supports that version.
 
 ## Installation
 
-Via `go` install:
+Via Go (Go 1.26 or later is required to build the current source):
 
 ```sh
 go install github.com/dadav/helm-schema/cmd/helm-schema@latest
 ```
+
+Make sure your Go binary directory (`go env GOBIN`, or `$(go env GOPATH)/bin` when GOBIN is empty) is on `PATH`. For repeatable CI builds, replace `latest` with a release version such as `X.Y.Z`, using a version from the [releases page](https://github.com/dadav/helm-schema/releases).
 
 From `aur`:
 
@@ -39,17 +39,17 @@ paru -S helm-schema
 Via `podman/docker`:
 
 ```sh
-podman run --rm -v $PWD:/home/helm-schema ghcr.io/dadav/helm-schema:latest
+podman run --rm -v "$PWD:/home/helm-schema" ghcr.io/dadav/helm-schema:latest
 ```
 
-As `helm plugin`:
+As a Helm 3 plugin:
 
 ```sh
 helm plugin install https://github.com/dadav/helm-schema
 ```
 
 > [!IMPORTANT]
-> Since Helm v4.2, plugin signature verification is enabled by default, and
+> For Helm 4, use the verified release-tarball installation below. Since Helm v4.2, plugin signature verification is enabled by default, and
 > installing from a git repository URL fails with
 > `plugin source does not support verification`, because git sources cannot be
 > verified by Helm. Either install from a release tarball with verification
@@ -96,11 +96,11 @@ your OS/architecture from the release assets:
 
 ```sh
 # Verified against Helm's default keyring (~/.gnupg/pubring.gpg)
-helm plugin install https://github.com/dadav/helm-schema/releases/download/X.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz
+helm plugin install https://github.com/dadav/helm-schema/releases/download/X.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz --verify
 
 # Or point Helm at the standalone keyring file from step 1
 helm plugin install https://github.com/dadav/helm-schema/releases/download/X.Y.Z/helm-schema_X.Y.Z_Linux_x86_64.tar.gz \
-  --keyring helm-schema-keyring.gpg
+  --verify --keyring helm-schema-keyring.gpg
 ```
 
 **Verify Installed Plugin**
@@ -114,6 +114,55 @@ helm plugin verify schema
 > Plugin verification requires Helm v4 or later. If using Helm v3, signatures
 > will be ignored.
 
+## Quickstart
+
+This example requires Helm and the `helm-schema` binary on `PATH`. If you installed the plugin, replace `helm-schema` with `helm schema` in the commands below.
+
+Create a small chart in a directory that does not already contain `schema-demo`:
+
+```sh
+mkdir -p schema-demo/templates
+cat > schema-demo/Chart.yaml <<'EOF'
+apiVersion: v2
+name: schema-demo
+version: 0.1.0
+EOF
+cat > schema-demo/values.yaml <<'EOF'
+# @schema
+# type: integer
+# minimum: 1
+# required: true
+# @schema
+# Number of application replicas.
+replicaCount: 1
+EOF
+cat > schema-demo/templates/configmap.yaml <<'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}
+data:
+  replicaCount: {{ .Values.replicaCount | quote }}
+EOF
+```
+
+Generate the schema and validate the chart without connecting to a cluster:
+
+```sh
+helm-schema -c schema-demo --add-schema-reference
+helm lint schema-demo
+helm template demo schema-demo
+helm-schema -c schema-demo --check
+```
+
+The generator writes `schema-demo/values.schema.json` and adds an editor reference to `values.yaml`. The Helm commands succeed with the default value. This override fails because `replicaCount` must be at least 1:
+
+```sh
+helm template demo schema-demo --set replicaCount=0
+```
+
+`helm-schema` checks schema structure during generation. Helm checks the final merged values, including overrides, during `lint`, `template`, `install`, and `upgrade`. See [Helm schema validation](https://helm.sh/docs/topics/charts/#schema-files). Commit the values file and generated schema together; regenerate after changing values or annotations.
+
 ## Usage
 
 ### Pre-commit hook
@@ -122,13 +171,26 @@ If you want to automatically generate a new `values.schema.json` if you change t
 file, you can do the following:
 
 1. Install [`pre-commit`](https://pre-commit.com/#install)
-2. Copy the [`.pre-commit-config.yaml`](./.pre-commit-config.yaml) to your helm chart repository.
+2. Add this hook to your chart repository's `.pre-commit-config.yaml`. Replace `X.Y.Z` with the release version you use locally and in CI.
+
+```yaml
+repos:
+  - repo: https://github.com/dadav/helm-schema
+    rev: X.Y.Z
+    hooks:
+      - id: helm-schema
+        pass_filenames: false
+        args: [--chart-search-root=charts/my-app, --keep-existing-dep-schemas]
+```
+
 3. Then run these commands:
 
 ```sh
 pre-commit install
 pre-commit install-hooks
 ```
+
+The hook generates schemas and can modify tracked files. Review and stage the generated changes, then retry the commit. Build dependencies before running the hook when your chart uses subcharts. If you use custom values filenames or local schema references, extend the hook's `files` pattern to include those inputs; the default matches `Chart.yaml` and `values.yaml`.
 
 ### Running the binary directly
 
@@ -142,30 +204,30 @@ helm-schema
 
 The binary has the following options:
 
-```sh
+```text
 Flags:
-  -A, --annotate                               "write inferred @schema type blocks into the first matching values file instead of generating schema"
-  -r, --add-schema-reference                   "add reference to schema in values.yaml if not found"
-  -w, --allow-circular-dependencies            "allow circular dependencies between charts (will log a warning instead of failing)"
-  -a, --append-newline                         "append newline to generated jsonschema at the end of the file"
-  -C, --check                                  "check that existing schema files are up-to-date; exit nonzero if any are missing or stale, without writing files"
-  -c, --chart-search-root string               "directory to search recursively within for charts (default ".")"
-  -i, --dependencies-filter strings            "only generate schema for specified dependencies (comma-separated list of dependency names)"
-  -g, --dont-add-global                        "don't auto add global property"
-  -x, --dont-strip-helm-docs-prefix            "disable the removal of the helm-docs prefix (--)"
-  -d, --dry-run                                "don't actually create files just print to stdout passed"
-  -p, --helm-docs-compatibility-mode           "parse and use helm-docs comments"
-  -h, --help                                   "help for helm-schema"
-  -K, --keep-existing-dep-schemas              "use dependency charts' pre-existing values.schema.json instead of regenerating from values.yaml"
-  -s, --keep-full-comment                      "keep the whole leading comment (default: cut at empty line)"
-  -l, --log-level string                       "level of logs that should be printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")"
-  -n, --no-dependencies                        "skip dependency charts: don't merge them into parents and don't generate their schemas"
-  -o, --output-file string                     "jsonschema file path relative to each chart directory to which jsonschema will be written (default 'values.schema.json')"
-  -m, --skip-dependencies-schema-validation    "skip schema validation for dependencies by setting additionalProperties to true and removing from required"
-  -f, --value-files strings                    "filenames to look for chart values; schema generation merges all matches in the order provided (default [values.yaml])"
-  -k, --skip-auto-generation strings           "skip the auto generation for these fields (default [])"
-  -u, --uncomment                              "consider yaml which is commented out"
-  -v, --version                                "version for helm-schema"
+  -r, --add-schema-reference                  add reference to schema in values.yaml if not found
+  -w, --allow-circular-dependencies           allow circular dependencies without dependency ordering; merges may be incomplete
+  -A, --annotate                              write inferred @schema annotations into values.yaml files for unannotated keys
+  -a, --append-newline                        append newline to generated jsonschema at the end of the file
+  -c, --chart-search-root string              directory to search recursively within for charts (default ".")
+  -C, --check                                 check that existing schema files are up-to-date; exit nonzero if any are missing or stale, without writing files
+  -i, --dependencies-filter strings           only generate schema for specified dependencies (comma-separated list of dependency names)
+  -g, --dont-add-global                       dont auto add global property
+  -x, --dont-strip-helm-docs-prefix           disable the removal of the helm-docs prefix (--)
+  -d, --dry-run                               print generated output without modifying values or schema files
+  -p, --helm-docs-compatibility-mode          parse and use helm-docs comments
+  -h, --help                                  help for helm-schema
+  -K, --keep-existing-dep-schemas             use dependency charts' pre-existing values.schema.json instead of regenerating from values.yaml
+  -s, --keep-full-comment                     keep the whole leading comment (default: cut at empty line)
+  -l, --log-level string                      level of logs that should be printed, one of (panic, fatal, error, warning, info, debug, trace) (default "info")
+  -n, --no-dependencies                       skip dependency charts: don't merge them into parents and don't generate their schemas
+  -o, --output-file string                    jsonschema file path relative to each chart directory to which jsonschema will be written (default "values.schema.json")
+  -k, --skip-auto-generation strings          comma separated list of fields to skip from being created by default (possible: title, description, required, default, additionalProperties)
+  -m, --skip-dependencies-schema-validation   skip schema validation for dependencies by setting additionalProperties to true and removing from required
+  -u, --uncomment                             consider yaml which is commented out
+  -f, --value-files strings                   values filenames relative to each chart; merge all matches in the order provided (default [values.yaml])
+  -v, --version                               version for helm-schema
 ```
 
 For schema generation, `helm-schema` checks each `--value-files` entry for the chart, keeps the ones that exist, and merges them in the order provided. Later files take precedence over earlier files, following Helm's `-f/--values` behavior.
@@ -173,6 +235,28 @@ For schema generation, `helm-schema` checks each `--value-files` entry for the c
 `--annotate` does not merge multiple files. It only annotates the first matching values file.
 
 `--add-schema-reference` also targets the first matching values file.
+
+### Multiple values files
+
+For an existing chart at `charts/my-app`, generate and check with the same ordered list:
+
+```sh
+helm-schema -c charts/my-app -f values.yaml,values.prod.yaml
+helm-schema -c charts/my-app -f values.yaml,values.prod.yaml --check
+helm lint charts/my-app -f charts/my-app/values.prod.yaml
+```
+
+Filenames are relative to each discovered chart directory. Nested maps merge recursively; later scalars and arrays replace earlier ones. Missing files are skipped, and generation fails if none of the configured files exists. Empty, comment-only, and top-level null files contribute an empty map. A nested `null` remains a value. Later comments replace earlier comments when present; otherwise earlier annotations are retained.
+
+The resulting schema describes the merged configuration. To maintain different schemas for different environments, generate them separately with `-o`; Helm automatically uses only `values.schema.json` at the chart root.
+
+### Editor references
+
+```sh
+helm-schema -c charts/my-app --add-schema-reference
+```
+
+This adds a `# yaml-language-server: $schema=...` comment to the first matching values file. The path is relative to that values file and respects `--output-file`, including values files in subdirectories. Existing schema directives are preserved, so edit an existing directive yourself when changing its target. `--dry-run` does not modify values files.
 
 ### Annotate mode
 
@@ -186,16 +270,28 @@ Use `--annotate` to add inferred `# @schema` type blocks to a values file instea
 
 Use `-C, --check` to verify that committed `values.schema.json` files are up-to-date without writing anything. The command regenerates each schema in memory and compares it byte-for-byte against the file on disk. If any schema is missing or stale, it logs the offending charts and exits with a nonzero status.
 
+Schemas generated inside temporary archive extraction directories are compiled and merged into their parents, but are not compared against temporary files. Changes to packaged dependencies are checked through the generated parent schema. Schemas reused with `-K` are treated as source inputs rather than generated outputs.
+
 `--check` cannot be combined with `--dry-run`, `--annotate`, or `--add-schema-reference`.
 
-Example CI step:
+`--check` checks freshness, not whether your deployment values satisfy the schema. Use Helm for that second check. Keep the same helm-schema version, values-file order, and generation flags in local development, pre-commit, and CI, including `--append-newline` if used.
+
+After installing Helm and a pinned helm-schema release in CI, use these steps for a chart with dependencies:
 
 ```yaml
+- name: Build chart dependencies
+  run: helm dependency build charts/my-app
 - name: Verify Helm schemas are up-to-date
-  run: helm-schema --check
+  run: helm-schema -c charts/my-app -K --check
+- name: Validate chart values and templates
+  run: |
+    helm lint charts/my-app
+    helm template ci charts/my-app
 ```
 
-If the step fails, run `helm-schema` locally and commit the regenerated `values.schema.json` files.
+Commit `Chart.lock` for reproducible dependency builds. For charts without dependencies, omit the dependency-build step and `-K`. To validate an environment override, pass its `-f` argument to both Helm commands and use the corresponding values-file list for generation and checking.
+
+If a schema is stale, regenerate locally with the same flags and commit the updated `values.schema.json`. Archive extraction errors fail the command before schemas or values files are modified; replace corrupt dependency archives before retrying.
 
 ## Annotations
 
@@ -243,15 +339,15 @@ stage: dev
 | [`type`](#type) | Defines the [jsonschema-type](https://json-schema.org/understanding-json-schema/reference/type.html) of the object. Multiple values are supported (e.g. `[string, integer]`) as a shortcut to `anyOf` | `object`, `array`, `string`, `number`, `integer`, `boolean` or `null` |
 | [`title`](#title) | Defines the [title field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=title) of the object | Defaults to the key itself |
 | [`description`](#description) | Defines the [description field](https://json-schema.org/understanding-json-schema/reference/generic.html?highlight=description) of the object. | Defaults to the comments just above or below the `@schema` annotations block |
-| [`default`](#default) | Sets the default value and will be displayed first on the users IDE| Takes a `string` |
+| [`default`](#default) | Documents a default for editors; it does not insert values into Helm's configuration | Takes a JSON value |
 | [`properties`](#properties) | Contains a map with keys as property names and values as schema | Takes an `object` |
 | [`pattern`](#pattern) | Regex pattern to test the value | Takes an `string` |
 | [`format`](#format) | The [format keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) allows for basic semantic identification of certain kinds of string values | Takes a [keyword](https://json-schema.org/understanding-json-schema/reference/string.html#format) |
 | [`required`](#required) | Adds the key to the required items | `true` or `false` or `array` |
 | [`deprecated`](#deprecated) | Marks the option as deprecated | `true` or `false` |
 | [`items`](#items) | Contains the schema that describes the possible array items | Takes an `object` |
-| [`enum`](#enum) | Multiple allowed values. Accepts an array of `string` | Takes an `array` |
-| [`const`](#const) | Single allowed value | Takes a `string`|
+| [`enum`](#enum) | Multiple allowed values | Takes an array of JSON values |
+| [`const`](#const) | Single allowed value | Takes a JSON value |
 | [`examples`](#examples) | Some examples you can provide for the end user | Takes an `array` |
 | [`minimum`](#minimum) | Minimum value. Can't be used with `exclusiveMinimum` | Takes a `number` (integer or float). Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
 | [`exclusiveMinimum`](#exclusiveminimum) | Exclusive minimum. Can't be used with `minimum` | Takes a `number` (integer or float). Must be smaller than `maximum` or `exclusiveMaximum` (if used) |
@@ -260,26 +356,26 @@ stage: dev
 | [`multipleOf`](#multipleof) | The yaml-value must be a multiple of. For example: If you set this to 0.1, allowed values would be 0, 0.1, 0.2... | Takes a `number` (integer or float, must be > 0) |
 | [`additionalProperties`](#additionalproperties) | Allow additional keys in maps. Useful if you want to use for example `additionalAnnotations`, which will be filled with keys that the `jsonschema` can't know| Defaults to `false` if the map is not an empty map. Takes a schema or boolean value |
 | [`patternProperties`](#patternproperties) | Contains a map which maps schemas to pattern. If properties match the patterns, the given schema is applied| Takes an `object` |
-| [`anyOf`](#anyof) | Accepts an array of schemas. None or one must apply | Takes an `array` |
-| [`oneOf`](#oneof) | Accepts an array of schemas. One or more must apply | Takes an `array` |
+| [`anyOf`](#anyof) | At least one schema must match; multiple matches are allowed | Takes an `array` |
+| [`oneOf`](#oneof) | Exactly one schema must match | Takes an `array` |
 | [`allOf`](#allof) | Accepts an array of schemas. All must apply| Takes an `array` |
 | [`not`](#not) | A schema that must not be matched. | Takes an `object` |
 | [`if/then/else`](#ifthenelse) | `if` the given schema applies, `then` also apply the given schema or `else` the other schema| Takes an `object` |
 | [`$ref`](#ref) | Accepts an URI to a valid `jsonschema`. Extend the schema for the current key | Takes an URI (or relative file) |
 | [`minLength`](#minlength) | Minimum string length. | Takes an `integer`. Must be smaller or equal than `maxLength` (if used) |
 | [`maxLength`](#maxlength) | Maximum string length. | Takes an `integer`. Must be greater or equal than `minLength` (if used) |
-| [`minItems`](#minItems) | Minimum length of an array. | Takes an `integer`. Must be smaller or equal than `maxItems` (if used) |
-| [`maxItems`](#maxItems) | Maximum length of an array. | Takes an `integer`. Must be greater or equal than `minItems` (if used) |
+| [`minItems`](#minitems) | Minimum length of an array. | Takes an `integer`. Must be smaller or equal than `maxItems` (if used) |
+| [`maxItems`](#maxitems) | Maximum length of an array. | Takes an `integer`. Must be greater or equal than `minItems` (if used) |
 | [`contains`](#contains) | Array must contain at least one item matching this schema | Takes a schema `object` |
-| [`additionalItems`](#additionalItems) | Schema for array items beyond those defined in `items` tuple | Takes a `boolean` or schema `object` |
-| [`minProperties`](#minProperties) | Minimum number of properties in an object | Takes an `integer` >= 0 |
-| [`maxProperties`](#maxProperties) | Maximum number of properties in an object | Takes an `integer` >= 0 |
-| [`propertyNames`](#propertyNames) | Schema that all property names must match | Takes a schema `object` |
+| [`additionalItems`](#additionalitems) | Draft 7 tuple keyword; has no effect with the single-schema `items` supported here | Takes a `boolean` or schema `object` |
+| [`minProperties`](#minproperties) | Minimum number of properties in an object | Takes an `integer` >= 0 |
+| [`maxProperties`](#maxproperties) | Maximum number of properties in an object | Takes an `integer` >= 0 |
+| [`propertyNames`](#propertynames) | Schema that all property names must match | Takes a schema `object` |
 | [`dependencies`](#dependencies) | Property dependencies (presence of one property requires others) | Takes an `object` mapping property names to arrays or schemas |
 | [`definitions`](#definitions) | Reusable schema definitions for use with `$ref`. Also supports `$defs` from newer JSON Schema drafts (automatically converted) | Takes an `object` mapping names to schemas |
 | [`$comment`](#comment) | Comment for schema maintainers (not shown to end users) | Takes a `string` |
-| [`contentEncoding`](#contentEncoding) | Encoding for string content (e.g., base64) | Takes a `string` |
-| [`contentMediaType`](#contentMediaType) | MIME type for string content | Takes a `string` |
+| [`contentEncoding`](#contentencoding) | Encoding for string content (e.g., base64) | Takes a `string` |
+| [`contentMediaType`](#contentmediatype) | MIME type for string content | Takes a `string` |
 
 ## Validation & completion
 
@@ -354,25 +450,44 @@ The generated schema for `config` will allow both `string` and `object`.
 
 ## Dependencies
 
-By default, `helm-schema` will try to also create the schemas for the dependencies in their respective chart directory. These schemas will be merged as properties in the main schema, but the `requiredProperties` field will be nullified, otherwise you would have to always overwrite all the required fields.
+By default, `helm-schema` generates schemas for discovered dependencies as well as parent charts. Application dependencies appear under their name or alias in the parent schema. The nested copy has its `required` lists cleared to allow partial overrides; Helm also validates the subchart's own schema against its merged values.
 
-If you don't want to generate `jsonschema` for chart dependencies, you can use the `-n, --no-dependencies` option to only generate the `values.schema.json` for your parent chart(s). With this flag, any discovered chart that is declared as a dependency of another discovered chart is skipped entirely — the dependency is not merged into its parent and its own `values.schema.json` is not generated.
+For unpacked dependencies, generated schema files are written to their directories. Packaged dependencies are extracted temporarily for generation and merging; the original archives are not rewritten, and extracted files are removed when the command finishes.
+
+Use `-n, --no-dependencies` to generate schemas only for parent charts. Any discovered chart declared as a dependency of another discovered chart is skipped: its schema is neither generated nor merged into its parent. Properties already present in the parent's values file still contribute to the parent schema.
 
 ### Reusing a Dependency's Pre-existing Schema
 
-By default, `helm-schema` regenerates `values.schema.json` for every discovered chart — including subcharts that already ship with a hand-written `values.schema.json`. If you instead want to preserve a dependency's shipped schema (typical for third-party charts pulled via `helm dep up` that carry rich constraints such as `minimum`, `pattern`, `format`, or custom `x-*` annotations), pass `-K, --keep-existing-dep-schemas`:
+By default, `helm-schema` regenerates `values.schema.json` for every discovered chart, including subcharts with a hand-written schema. For third-party charts, use `-K, --keep-existing-dep-schemas` to read their existing schemas and preserve those files:
 
 ```sh
-helm-schema -K
+helm dependency build charts/my-app
+helm-schema -c charts/my-app -K
 ```
 
 When this flag is set:
 
-1. A dependency chart's pre-existing `values.schema.json` is used as-is and merged into the parent.
+1. A dependency chart's pre-existing schema supplies its properties for merging into the parent, with the normal dependency merging rules above.
 2. That dependency's schema file is not overwritten on disk.
-3. The dependency's `values.yaml` is not parsed when its existing schema is valid.
+3. The dependency's `values.yaml` is not parsed when its existing schema can be loaded.
 
-If the existing schema is missing or invalid, `helm-schema` falls back to regenerating it from `values.yaml`. Without the flag, every discovered chart's schema is regenerated from its `values.yaml`.
+If the existing schema is missing or cannot be decoded, `helm-schema` falls back to regenerating it from `values.yaml`. This fallback is a parsing check, not a guarantee that every existing schema constraint is valid. Without the flag, every discovered chart's schema is regenerated from its `values.yaml`.
+
+### Importing dependency values
+
+`import-values` copies schema properties to the requested parent location. Simple imports read `exports.<name>`; child/parent imports use explicit paths. Application dependencies also remain nested under their name or alias, matching the values Helm supplies. For example, importing `exports.defaults.region` into the root adds `region` while retaining the dependency's nested configuration.
+
+```yaml
+dependencies:
+  - name: child
+    version: 1.0.0
+    repository: file://../child
+    alias: backend
+    import-values:
+      - defaults
+```
+
+With this configuration, the parent schema includes both the imported properties and `backend`. See [Helm's import-values documentation](https://helm.sh/docs/topics/charts/#importing-child-values-via-dependencies).
 
 ### Library Charts
 
@@ -380,11 +495,11 @@ When a dependency has `type: library` in its `Chart.yaml`, `helm-schema` will me
 
 For example, if you have a library chart named `common` with properties `environment` and `region`, these will appear at the top level of the parent schema alongside the parent's own properties, rather than under a `common` key.
 
-**Note:** If a library chart property has the same name as a property already defined in the parent chart, the parent's property takes precedence and a warning will be logged.
+For library properties and imported properties, an explicit parent annotation takes precedence. An explicitly annotated dependency property can replace an inferred parent property; otherwise the existing parent property is kept.
 
 ### Skip Dependency Schema Validation
 
-By default, when dependency schemas are merged into the parent chart schema, they inherit strict validation rules. This means that if you add unknown keys at the top level of a dependency's values (e.g., `subchart.unknownKey`), validation may not fail as expected.
+The parent schema's nested dependency wrapper does not copy the dependency root's `additionalProperties` constraint. Constraints on its child properties still apply, and Helm separately validates any schema shipped with the subchart.
 
 If you want to allow additional properties in dependency schemas and ensure they are not required, you can use the `-m, --skip-dependencies-schema-validation` flag. This will:
 
@@ -397,7 +512,7 @@ Example usage:
 helm-schema -m
 ```
 
-This is useful when you have umbrella charts with multiple dependencies and want to allow flexibility in overriding dependency values without strict schema validation.
+This relaxes dependency wrappers in the generated parent schema. It does not disable all nested constraints or Helm's independent validation of subchart schemas.
 
 ### Handling Circular Dependencies
 
@@ -406,7 +521,7 @@ In some scenarios, you may have charts that reference each other to share values
 - A cert-manager chart depends on a grafana chart to get the instance name for creating dashboards
 - The grafana chart depends on the cert-manager chart to get the ACME issuer value
 
-By default, `helm-schema` will detect this as a circular dependency and log a warning. The tool will still continue processing, but the results may not be sorted in dependency order.
+By default, a detected circular dependency fails schema generation with a nonzero exit status.
 
 If you want to explicitly allow circular dependencies and acknowledge this behavior, you can use the `-w, --allow-circular-dependencies` flag:
 
@@ -414,7 +529,7 @@ If you want to explicitly allow circular dependencies and acknowledge this behav
 helm-schema -w
 ```
 
-When this flag is enabled, circular dependencies are treated as warnings rather than errors, and the charts are processed in their original discovery order instead of topologically sorted order.
+When this flag is enabled, sorting returns the collected results without dependency ordering. Dependency merges can consequently be incomplete. The current implementation does not emit a cycle warning in this mode.
 
 **Note:** This is primarily useful when charts have cross-dependencies purely for value sharing, not for actual build order dependencies.
 
@@ -620,7 +735,9 @@ email: foo@example.org
 
 #### `required`
 
-By default every property is a required property, you can disable this with `required: false` for a single key. You can also invert this behaviour with the option `helm-schema -k required`, now every property is an optional one.
+Unannotated properties are automatically required unless you pass `helm-schema -k required`. A property with an explicit `@schema` block is not automatically required merely because it appears in `values.yaml`; use `required: true` in that block to require it. Helm-docs metadata can also make a field explicit in compatibility mode.
+
+Likewise, an explicit annotation block can suppress YAML type inference. Set `type` along with constraints such as `minimum` when the type matters. The quickstart specifies both `type` and `required` for this reason.
 
 ```yaml
 # @schema
@@ -642,7 +759,7 @@ altName:
 The boolean and array forms have distinct meanings:
 
 - **Boolean** (`required: true` / `required: false`) controls whether **this key itself** is listed in its parent object's `required` array. This also applies when the key carries a `$ref` (issue #131): `required: true` still marks the `$ref`'d key as required in its parent.
-- **Array** (`required: [foo, bar]`) lists which of **this object's own children** are required, i.e. it populates the object's own `required` array. It does not, by itself, mark the object as required in its parent (that is governed by the default-required behavior described above, or an explicit boolean form).
+- **Array** (`required: [foo, bar]`) lists which of **this object's own children** are required. It does not mark the object itself as required in its parent. To require both levels, list the object in its parent's `required` array as well.
 
 #### `deprecated`
 
@@ -674,7 +791,7 @@ If you want to specify a schema for possible array values without using a defaul
 # @schema
 # Will give auto-completion for the below structure
 # hosts:
-#  - name:
+#  - host:
 #      url: my.example.org
 hosts: []
 ```
@@ -867,7 +984,7 @@ env:
 
 #### `anyOf`
 
-Allows user to define multiple schema fo a single key. Key can be `anyOf` the given schemas or none of them.
+The value must match at least one of the supplied schemas. Matching more than one is allowed. See [JSON Schema composition](https://json-schema.org/understanding-json-schema/reference/combining).
 
 ```yaml
 # Accepts multiple types
@@ -898,7 +1015,7 @@ bar:
 
 #### `oneOf`
 
-Allows user to define multiple schema fo a single key. Key must match `oneOf` the given schemas.
+The value must match exactly one of the supplied schemas. A value matching two or more is rejected.
 
 ```yaml
 # @schema
@@ -912,7 +1029,7 @@ storage: 30Gib
 
 #### `allOf`
 
-Allows user to define multiple schema for a single key. Key must match `oneOf` the given schemas.
+The value must match every supplied schema.
 
 ```yaml
 # @schema
@@ -1069,14 +1186,19 @@ users:
 
 #### `additionalItems`
 
-Controls validation of array items beyond those specified in an `items` tuple.
+In Draft 7, `additionalItems` only applies when `items` is an array of tuple schemas. helm-schema currently supports `items` as a single schema, so `additionalItems: false` does not limit the length of generated arrays. See the [Draft 7 behavior](https://json-schema.org/understanding-json-schema/reference/array#additional-items).
+
+Use `maxItems` to limit length, and add `minItems` for a fixed-size array:
 
 ```yaml
 # @schema
 # type: array
-# additionalItems: false
+# items:
+#   type: string
+# minItems: 2
+# maxItems: 2
 # @schema
-# No additional items allowed beyond what's defined
+# Exactly two strings are allowed
 fixedArray:
   - foo
   - bar
