@@ -734,7 +734,7 @@ apiKey: "api-key-xxxxx"
 
 #### `format`
 
-Known formats that the value must match. Formats available at [JSON Schema - Formats](https://json-schema.org/understanding-json-schema/reference/string.html#format).
+Describes the value's format; enforcement depends on the consuming validator. See [JSON Schema - Formats](https://json-schema.org/understanding-json-schema/reference/string.html#format). Custom annotations such as Kubernetes `int64` are preserved, including on non-string types.
 
 ```yaml
 # @schema
@@ -1282,6 +1282,8 @@ Define reusable schema fragments that can be referenced with `$ref`.
 
 > [!NOTE]
 > When referencing external JSON Schema files that use `$defs` (JSON Schema Draft 2019-09+), helm-schema automatically converts them to `definitions` and rewrites `$ref` paths from `#/$defs/` to `#/definitions/` for Draft 7 compatibility.
+
+Definitions imported from schema files or dependency charts receive a file or dependency prefix. Corresponding `$ref` paths are rewritten so identically named definitions remain independent.
 
 ```yaml
 # @schema

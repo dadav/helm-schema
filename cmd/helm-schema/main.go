@@ -534,10 +534,29 @@ func exec(cmd *cobra.Command, _ []string) error {
 							dependencyResult.ChartPath,
 						)
 
+						depKey := dep.Name
+						if dep.Alias != "" {
+							depKey = dep.Alias
+						}
+						dependencySchema := dependencyResult.Schema.WithDefinitionPrefix(depKey)
+
+						if len(dependencySchema.Definitions) > 0 {
+							if result.Schema.Definitions == nil {
+								result.Schema.Definitions = make(map[string]*schema.Schema)
+							}
+							for name, definition := range dependencySchema.Definitions {
+								if _, exists := result.Schema.Definitions[name]; exists {
+									log.Warnf("Definition %q from dependency %s conflicts with parent chart %s; keeping parent's definition", name, dep.Name, result.Chart.Name)
+								} else {
+									result.Schema.Definitions[name] = definition
+								}
+							}
+						}
+
 						// Process import-values first (before regular dependency nesting)
 						importedProps := processImportValues(
 							&result.Schema,
-							&dependencyResult.Schema,
+							dependencySchema,
 							dep,
 							result.Chart.Name,
 						)
@@ -548,21 +567,20 @@ func exec(cmd *cobra.Command, _ []string) error {
 							log.Debugf("Merging library chart %s properties into parent chart %s at top level", dep.Name, result.Chart.Name)
 							mergeSchemaProperties(
 								&result.Schema,
-								&dependencyResult.Schema,
+								dependencySchema,
 								importedProps,
 								fmt.Sprintf("library chart %s", dep.Name),
 								fmt.Sprintf("parent chart %s", result.Chart.Name),
 							)
 						} else {
 							// Helm retains nested dependency values even when import-values is used.
-							// depSchema shares dependencyResult's Properties map; DisableRequiredProperties
-							// mutates it. Safe only because TopoSort writes each dependency's own schema
-							// file before any parent reaches this point, and the mutation is idempotent.
+							// Properties can be shared when no definitions need rebasing. Clearing required
+							// flags is idempotent, and TopoSort writes the dependency before its parents.
 							depSchema := schema.Schema{
 								Type:        []string{"object"},
 								Title:       dep.Name,
 								Description: dependencyResult.Chart.Description,
-								Properties:  dependencyResult.Schema.Properties,
+								Properties:  dependencySchema.Properties,
 							}
 							if dep.Condition != "" && !strings.Contains(dep.Condition, ".") {
 								depSchema.Type = []string{"object", "boolean"}

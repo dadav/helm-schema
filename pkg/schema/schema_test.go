@@ -86,7 +86,7 @@ func TestValidate(t *testing.T) {
 # pattern: ^foo
 # format: ipv4
 # @schema`,
-			expectedValid: false,
+			expectedValid: true,
 		},
 		{
 			comment: `
