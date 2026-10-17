@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -623,10 +624,13 @@ func (s *Schema) rewriteDefsRefs() {
 		return
 	}
 
-	// Rewrite main $ref
-	if strings.HasPrefix(s.Ref, "#/$defs/") {
-		s.Ref = strings.Replace(s.Ref, "#/$defs/", "#/definitions/", 1)
+	rewrite := func(ref string) string {
+		if pointer, ok := strings.CutPrefix(ref, "#/$defs/"); ok {
+			return "#/definitions/" + pointer
+		}
+		return ref
 	}
+	s.Ref = rewrite(s.Ref)
 
 	// Recursively process all nested schemas
 	for _, prop := range s.Properties {
@@ -669,6 +673,10 @@ func (s *Schema) rewriteDefsRefs() {
 		schema.rewriteDefsRefs()
 	}
 
+	for name, dependency := range s.Dependencies {
+		s.Dependencies[name] = copySchemaValue(dependency, rewrite)
+	}
+
 	// Handle AdditionalProperties and AdditionalItems when they are schemas
 	if s.AdditionalProperties != nil {
 		switch v := s.AdditionalProperties.(type) {
@@ -677,6 +685,9 @@ func (s *Schema) rewriteDefsRefs() {
 		case Schema:
 			v.rewriteDefsRefs()
 			s.AdditionalProperties = v
+		case map[string]interface{}:
+			rewritten := copySchemaValue(v, rewrite)
+			s.AdditionalProperties = rewritten
 		}
 	}
 	if s.AdditionalItems != nil {
@@ -686,6 +697,9 @@ func (s *Schema) rewriteDefsRefs() {
 		case Schema:
 			v.rewriteDefsRefs()
 			s.AdditionalItems = v
+		case map[string]interface{}:
+			rewritten := copySchemaValue(v, rewrite)
+			s.AdditionalItems = rewritten
 		}
 	}
 }
@@ -866,16 +880,6 @@ const (
 	FormatRegex          = "regex"
 )
 
-var supportedFormats = map[string]bool{
-	FormatDateTime: true, FormatTime: true, FormatDate: true,
-	FormatDuration: true, FormatEmail: true, FormatIDNEmail: true,
-	FormatHostname: true, FormatIDNHostname: true, FormatIPv4: true,
-	FormatIPv6: true, FormatUUID: true, FormatURI: true,
-	FormatURIReference: true, FormatIRI: true, FormatIRIReference: true,
-	FormatURITemplate: true, FormatJSONPointer: true,
-	FormatRelJSONPointer: true, FormatRegex: true,
-}
-
 // Validate performs comprehensive validation of the schema
 func (s Schema) Validate() error {
 	// Validate schema syntax
@@ -962,16 +966,6 @@ func (s Schema) validateNumericConstraints() error {
 }
 
 func (s Schema) validateStringConstraints() error {
-	if s.Format != "" {
-		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
-			return fmt.Errorf("format can only be used with string type, got %v", s.Type)
-		}
-
-		if !supportedFormats[s.Format] {
-			return fmt.Errorf("unsupported format: %s", s.Format)
-		}
-	}
-
 	if s.Pattern != "" {
 		if !s.Type.IsEmpty() && !s.Type.Matches("string") {
 			return fmt.Errorf("pattern can only be used with string type, got %v", s.Type)
@@ -980,10 +974,6 @@ func (s Schema) validateStringConstraints() error {
 		if _, err := regexp.Compile(s.Pattern); err != nil {
 			return fmt.Errorf("invalid pattern regex: %w", err)
 		}
-	}
-
-	if s.Format != "" && s.Pattern != "" {
-		return errors.New("cannot use both format and pattern in the same schema")
 	}
 
 	// Validate minLength/maxLength are only used with string type
@@ -2023,6 +2013,18 @@ func handleSchemaRefs(schema *Schema, valuesPath string) error {
 			if err != nil {
 				return fmt.Errorf("failed to resolve JSON pointer %s in %s: %w", jsonPointer, relFilePath, err)
 			}
+			if strings.HasPrefix(jsonPointer, "/definitions/") || strings.HasPrefix(jsonPointer, "/$defs/") {
+				var fullSchema Schema
+				if err := json.Unmarshal(byteValue, &fullSchema); err != nil {
+					return fmt.Errorf("failed to unmarshal schema from %s: %w", relFilePath, err)
+				}
+				fullSchema.Ref = "#" + strings.Replace(jsonPointer, "/$defs/", "/definitions/", 1)
+				bundled := fullSchema.WithDefinitionPrefix(filepath.ToSlash(filepath.Clean(fileRef)))
+				schema.Definitions = bundled.Definitions
+				schema.Ref = bundled.Ref
+				schema.HasData = true
+				return nil
+			}
 			jsonPointerResultMarshaled, err := json.Marshal(jsonPointerResultRaw)
 			if err != nil {
 				return fmt.Errorf("failed to marshal JSON pointer result from %s: %w", relFilePath, err)
@@ -2036,6 +2038,7 @@ func handleSchemaRefs(schema *Schema, valuesPath string) error {
 				return fmt.Errorf("failed to unmarshal schema from %s: %w", relFilePath, err)
 			}
 		}
+		relSchema = *relSchema.WithDefinitionPrefix(filepath.ToSlash(filepath.Clean(fileRef)))
 		*schema = relSchema
 		schema.HasData = true
 	}

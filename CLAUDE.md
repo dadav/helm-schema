@@ -257,11 +257,11 @@ The Schema struct (`pkg/schema/schema.go`) supports the following JSON Schema Dr
 The schema validation (`Validate()` method) performs type-specific constraint checks:
 
 - Numeric constraints (`minimum`, `maximum`, etc.) require `type: number` or `type: integer`
-- String constraints (`minLength`, `maxLength`, `pattern`, `format`, `contentEncoding`) require `type: string`
+- String constraints (`minLength`, `maxLength`, `pattern`, `contentEncoding`) require `type: string`
 - Array constraints (`items`, `minItems`, `maxItems`, `contains`, `additionalItems`) require `type: array`
 - Object constraints (`minProperties`, `maxProperties`, `propertyNames`, `additionalProperties`) require `type: object`
 
-Some keywords like `uniqueItems` are accepted on any type per the JSON Schema spec (keywords are ignored if the type doesn't match).
+Some keywords like `uniqueItems` are accepted on any type per the JSON Schema spec (keywords are ignored if the type doesn't match). `format` accepts custom annotations such as Kubernetes `int64`, including on non-string types, and can be combined with `pattern`; consumers decide which formats to enforce.
 
 ### Final Schema Compilation
 

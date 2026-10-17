@@ -125,7 +125,7 @@ func DiscoverChartsWithSources(chartSearchRoot, startPath, fileName string, depe
 		return nil, []error{err}
 	}
 
-	err = filepath.Walk(startPath, func(path string, info os.FileInfo, walkErr error) error {
+	walkChart := func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			discoveryErrors = append(discoveryErrors, walkErr)
 			return nil
@@ -157,9 +157,18 @@ func DiscoverChartsWithSources(chartSearchRoot, startPath, fileName string, depe
 		}
 		discovered = append(discovered, instance)
 		return nil
-	})
-	if err != nil {
-		discoveryErrors = append(discoveryErrors, err)
+	}
+	searchRoots := []string{startPath}
+	for _, archive := range archives {
+		rel, err := filepath.Rel(startPath, archive.Directory)
+		if err != nil || !filepath.IsLocal(rel) {
+			searchRoots = append(searchRoots, archive.Directory)
+		}
+	}
+	for _, root := range searchRoots {
+		if err := filepath.Walk(root, walkChart); err != nil {
+			discoveryErrors = append(discoveryErrors, err)
+		}
 	}
 
 	owners := chart.ChartOwners(discovered)
@@ -193,7 +202,7 @@ func DiscoverArchivesWithSources(startPath string) (string, []ExtractedArchive, 
 	if len(paths) == 0 {
 		return "", nil, discoveryErrors
 	}
-	tempDir, err := os.MkdirTemp(filepath.Dir(paths[0]), "tmp-*")
+	tempDir, err := os.MkdirTemp("", "helm-schema-*")
 	if err != nil {
 		return "", nil, append(discoveryErrors, fmt.Errorf("failed to create chart extraction directory: %w", err))
 	}
