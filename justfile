@@ -87,9 +87,11 @@ set-version version:
 
     sed -i -E 's/^var version string = ".*"$/var version string = "{{version}}"/' cmd/helm-schema/version.go
     sed -i -E 's/^version: ".*"$/version: "{{version}}"/' plugin.yaml
+    sed -i -E 's/^rev: .*$/rev: {{version}}/' .pre-commit-config.yaml
 
     grep -qx 'var version string = "{{version}}"' cmd/helm-schema/version.go
     grep -qx 'version: "{{version}}"' plugin.yaml
+    grep -qx 'rev: {{version}}' .pre-commit-config.yaml
 
 # Create and push a release tag. Example: just release 0.24.0
 release version:
@@ -116,15 +118,15 @@ release version:
     just set-version "{{version}}"
     just check
 
-    unexpected_changes="$(git status --porcelain | awk '{print $2}' | grep -Ev '^(cmd/helm-schema/version.go|plugin.yaml)$' || true)"
+    unexpected_changes="$(git status --porcelain | awk '{print $2}' | grep -Ev '^(cmd/helm-schema/version.go|plugin.yaml|.pre-commit-config.yaml)$' || true)"
     if [[ -n "$unexpected_changes" ]]; then
       echo "Release checks changed files outside the version bump:" >&2
       echo "$unexpected_changes" >&2
       exit 1
     fi
 
-    if ! git diff --quiet -- cmd/helm-schema/version.go plugin.yaml; then
-      git add cmd/helm-schema/version.go plugin.yaml
+    if ! git diff --quiet -- cmd/helm-schema/version.go plugin.yaml .pre-commit-config.yaml; then
+      git add cmd/helm-schema/version.go plugin.yaml .pre-commit-config.yaml
       git commit -m "chore: release {{version}}"
     fi
 
