@@ -72,6 +72,9 @@ snapshot:
 dockers_v2:
   - images:
       - "ghcr.io/dadav/helm-schema"
+    platforms:
+      - linux/amd64
+      - linux/arm64
     tags:
       - "v{{ .Version }}"
       - "{{ if .IsNightly }}nightly{{ end }}"
