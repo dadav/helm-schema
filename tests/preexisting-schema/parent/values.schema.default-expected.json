@@ -8,6 +8,7 @@
       "type": "string"
     },
     "dep-with-schema": {
+      "additionalProperties": false,
       "description": "A dependency chart with its own schema",
       "properties": {
         "global": {

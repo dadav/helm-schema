@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/dadav/go-jsonpointer"
@@ -463,158 +463,57 @@ func (s *Schema) HoistDefinitions() {
 		return
 	}
 
-	// Initialize root definitions if needed
 	if s.Definitions == nil {
 		s.Definitions = make(map[string]*Schema)
 	}
+	rootDefs := s.Definitions
+	var walk func(*Schema)
+	walk = func(current *Schema) {
+		if current == nil {
+			return
+		}
+		definitions := current.Definitions
+		if current != s {
+			current.Definitions = nil
+		}
+		for _, name := range slices.Sorted(maps.Keys(definitions)) {
+			definition := definitions[name]
+			walk(definition)
+			if existing, ok := rootDefs[name]; ok {
+				existingJSON, existingErr := json.Marshal(existing)
+				definitionJSON, definitionErr := json.Marshal(definition)
+				if existingErr != nil || definitionErr != nil || string(existingJSON) != string(definitionJSON) {
+					log.WithField("definition", name).Warn("Conflicting schema definition; keeping the first definition")
+				}
+			} else {
+				rootDefs[name] = definition
+			}
+		}
 
-	// Collect definitions from all nested schemas
-	s.collectAndHoistDefinitions(s.Definitions)
-}
-
-// collectAndHoistDefinitions recursively collects definitions from nested schemas
-// and adds them to the root definitions map, then removes them from nested positions.
-func (s *Schema) collectAndHoistDefinitions(rootDefs map[string]*Schema) {
-	if s == nil {
-		return
-	}
-
-	// Process nested properties
-	for _, prop := range s.Properties {
-		prop.collectAndHoistDefinitions(rootDefs)
-		// Hoist definitions from this property
-		if prop.Definitions != nil {
-			for name, def := range prop.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
+		var children []*Schema
+		for _, properties := range []map[string]*Schema{current.Properties, current.PatternProperties} {
+			for _, name := range slices.Sorted(maps.Keys(properties)) {
+				children = append(children, properties[name])
 			}
-			prop.Definitions = nil // Remove from nested position
 		}
-	}
-
-	// Process pattern properties
-	for _, prop := range s.PatternProperties {
-		prop.collectAndHoistDefinitions(rootDefs)
-		if prop.Definitions != nil {
-			for name, def := range prop.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			prop.Definitions = nil
+		children = append(children, current.Items, current.Contains, current.PropertyNames, current.If, current.Then, current.Else, current.Not)
+		children = append(children, current.AllOf...)
+		children = append(children, current.AnyOf...)
+		children = append(children, current.OneOf...)
+		for _, child := range children {
+			walk(child)
 		}
-	}
-
-	// Process items
-	if s.Items != nil {
-		s.Items.collectAndHoistDefinitions(rootDefs)
-		if s.Items.Definitions != nil {
-			for name, def := range s.Items.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			s.Items.Definitions = nil
-		}
-	}
-
-	// Process composition schemas
-	for _, schema := range s.AllOf {
-		schema.collectAndHoistDefinitions(rootDefs)
-		if schema.Definitions != nil {
-			for name, def := range schema.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			schema.Definitions = nil
-		}
-	}
-	for _, schema := range s.AnyOf {
-		schema.collectAndHoistDefinitions(rootDefs)
-		if schema.Definitions != nil {
-			for name, def := range schema.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			schema.Definitions = nil
-		}
-	}
-	for _, schema := range s.OneOf {
-		schema.collectAndHoistDefinitions(rootDefs)
-		if schema.Definitions != nil {
-			for name, def := range schema.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			schema.Definitions = nil
-		}
-	}
-
-	// Process conditional schemas
-	if s.If != nil {
-		s.If.collectAndHoistDefinitions(rootDefs)
-		if s.If.Definitions != nil {
-			for name, def := range s.If.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			s.If.Definitions = nil
-		}
-	}
-	if s.Then != nil {
-		s.Then.collectAndHoistDefinitions(rootDefs)
-		if s.Then.Definitions != nil {
-			for name, def := range s.Then.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			s.Then.Definitions = nil
-		}
-	}
-	if s.Else != nil {
-		s.Else.collectAndHoistDefinitions(rootDefs)
-		if s.Else.Definitions != nil {
-			for name, def := range s.Else.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			s.Else.Definitions = nil
-		}
-	}
-	if s.Not != nil {
-		s.Not.collectAndHoistDefinitions(rootDefs)
-		if s.Not.Definitions != nil {
-			for name, def := range s.Not.Definitions {
-				if _, exists := rootDefs[name]; !exists {
-					rootDefs[name] = def
-				}
-			}
-			s.Not.Definitions = nil
-		}
-	}
-
-	// Process AdditionalProperties when it's a schema
-	if s.AdditionalProperties != nil {
-		switch v := s.AdditionalProperties.(type) {
-		case *Schema:
-			v.collectAndHoistDefinitions(rootDefs)
-			if v.Definitions != nil {
-				for name, def := range v.Definitions {
-					if _, exists := rootDefs[name]; !exists {
-						rootDefs[name] = def
-					}
-				}
-				v.Definitions = nil
+		for _, value := range []*SchemaOrBool{&current.AdditionalProperties, &current.AdditionalItems} {
+			switch child := (*value).(type) {
+			case *Schema:
+				walk(child)
+			case Schema:
+				walk(&child)
+				*value = child
 			}
 		}
 	}
+	walk(s)
 }
 
 // rewriteDefsRefs recursively rewrites $ref paths from "#/$defs/" to "#/definitions/"
@@ -718,6 +617,9 @@ func (s *Schema) Set() {
 func (s *Schema) DisableRequiredProperties() {
 	s.Required = NewBoolOrArrayOfString([]string{}, false)
 	for _, v := range s.Properties {
+		v.DisableRequiredProperties()
+	}
+	for _, v := range s.PatternProperties {
 		v.DisableRequiredProperties()
 	}
 	if s.Items != nil {
@@ -1307,18 +1209,11 @@ func typeFromTag(tag string) ([]string, error) {
 // Then the property is added to the parents required property list
 func FixRequiredProperties(schema *Schema) error {
 	if schema.Properties != nil {
-		for propName, propValue := range schema.Properties {
+		for _, propName := range slices.Sorted(maps.Keys(schema.Properties)) {
+			propValue := schema.Properties[propName]
 			FixRequiredProperties(propValue)
 			if propValue.Required.Bool && !slices.Contains(schema.Required.Strings, propName) {
 				schema.Required.Strings = append(schema.Required.Strings, propName)
-			}
-		}
-		if !slices.Contains(schema.Type, "object") {
-			// If .Properties is set, type must be object
-			if len(schema.Type) == 0 {
-				schema.Type = []string{"object"}
-			} else {
-				schema.Type = append(schema.Type, "object")
 			}
 		}
 	}
@@ -1517,6 +1412,9 @@ func GetRootSchemaFromComment(comment string) (Schema, string, error) {
 		}
 	}
 
+	if result.HasData && result.Ref == "" {
+		FixRequiredProperties(&result)
+	}
 	return result, strings.Join(remainingCommentLines, "\n"), nil
 }
 
@@ -1669,9 +1567,13 @@ func YamlToSchema(
 			}
 		}
 
-		for i := 0; i < len(node.Content); i += 2 {
-			keyNode := node.Content[i]
-			valueNode := node.Content[i+1]
+		content, err := expandedMappingContent(node)
+		if err != nil {
+			return nil, err
+		}
+		for i := 0; i < len(content); i += 2 {
+			keyNode := content[i]
+			valueNode := content[i+1]
 
 			if valueNode.Kind == yaml.AliasNode {
 				valueNode = valueNode.Alias
@@ -1737,6 +1639,9 @@ func YamlToSchema(
 			}
 
 			if keyNodeSchema.HasData {
+				if keyNodeSchema.Ref == "" {
+					FixRequiredProperties(&keyNodeSchema)
+				}
 				if err := keyNodeSchema.Validate(); err != nil {
 					return nil, fmt.Errorf("error validating schema of key %s: %w", keyNode.Value, err)
 				}
@@ -1778,7 +1683,29 @@ func YamlToSchema(
 
 				// If no default value was set, use the values node value as default
 				if !skipAutoGeneration.Default && keyNodeSchema.Default == nil && valueNode.Kind == yaml.ScalarNode {
-					keyNodeSchema.Default = castNodeValueByType(valueNode.Value, keyNodeSchema.Type)
+					decodedValue, err := decodeNodeValue(valueNode)
+					if err != nil {
+						return nil, fmt.Errorf("error decoding default for key %s: %w", keyNode.Value, err)
+					}
+					if decodedValue != nil {
+						var decodedType string
+						switch decodedValue.(type) {
+						case bool:
+							decodedType = "boolean"
+						case int, int64, uint64:
+							decodedType = "integer"
+						case float64:
+							decodedType = "number"
+						case string:
+							decodedType = "string"
+						}
+						acceptsDecoded := slices.Contains(keyNodeSchema.Type, decodedType) ||
+							(decodedType == "integer" && slices.Contains(keyNodeSchema.Type, "number"))
+						if valueNode.Tag == timestampTag || (!acceptsDecoded && slices.Contains(keyNodeSchema.Type, "string")) {
+							decodedValue = valueNode.Value
+						}
+						keyNodeSchema.Default = decodedValue
+					}
 				}
 
 				// If the value is another map and no properties are set, get them from default values
@@ -1801,8 +1728,12 @@ func YamlToSchema(
 					generatedProperties := generatedSchema.Properties
 
 					// Process each property
-					for i := 0; i < len(valueNode.Content); i += 2 {
-						propKeyNode := valueNode.Content[i]
+					propertyContent, err := expandedMappingContent(valueNode)
+					if err != nil {
+						return nil, err
+					}
+					for i := 0; i < len(propertyContent); i += 2 {
+						propKeyNode := propertyContent[i]
 
 						// Check if this specific property matches any pattern
 						skipProperty := false
@@ -1851,6 +1782,19 @@ func YamlToSchema(
 							seqSchema.AnyOf = append(seqSchema.AnyOf, itemSchema)
 						}
 					}
+					seen := make(map[string]bool)
+					unique := make([]*Schema, 0, len(seqSchema.AnyOf))
+					for _, itemSchema := range seqSchema.AnyOf {
+						serialized, err := json.Marshal(itemSchema)
+						if err != nil {
+							return nil, fmt.Errorf("error serializing inferred array item for key %s: %w", keyNode.Value, err)
+						}
+						if !seen[string(serialized)] {
+							seen[string(serialized)] = true
+							unique = append(unique, itemSchema)
+						}
+					}
+					seqSchema.AnyOf = unique
 					keyNodeSchema.Items = seqSchema
 
 					// Because the `required` field isn't valid jsonschema (but just a helper boolean)
@@ -1909,47 +1853,6 @@ func helmDocsSingleTypeToSchemaType(helmDocsType string) (string, error) {
 			return "", fmt.Errorf("cant translate helm-docs type (%s) to helm-schema type", helmDocsType)
 		}
 	}
-}
-
-// castNodeValueByType attempts to convert a raw string value into the appropriate type based on
-// the provided fieldType. It handles boolean, integer, and number conversions. If the conversion
-// fails or the type is not supported (e.g., string), it returns the original raw value.
-//
-// Parameters:
-//   - rawValue: The string value to be converted
-//   - fieldType: Array of allowed JSON Schema types for this field
-//
-// Returns:
-//   - The converted value as interface{}, or the original string if conversion fails/isn't needed
-func castNodeValueByType(rawValue string, fieldType StringOrArrayOfString) any {
-	if len(fieldType) == 0 {
-		return rawValue
-	}
-
-	// rawValue must be one of fielTypes
-	for _, t := range fieldType {
-		switch t {
-		case "boolean":
-			switch rawValue {
-			case "true":
-				return true
-			case "false":
-				return false
-			}
-		case "integer":
-			v, err := strconv.Atoi(rawValue)
-			if err == nil {
-				return v
-			}
-		case "number":
-			v, err := strconv.ParseFloat(rawValue, 64)
-			if err == nil {
-				return v
-			}
-		}
-	}
-
-	return rawValue
 }
 
 // decodeNodeValue converts a yaml.Node into a plain Go value suitable for JSON Schema keywords.

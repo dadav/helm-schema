@@ -9,6 +9,7 @@
       "type": "string"
     },
     "child": {
+      "additionalProperties": false,
       "description": "A child chart with exports",
       "properties": {
         "exports": {

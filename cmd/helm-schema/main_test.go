@@ -4,10 +4,12 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/dadav/helm-schema/pkg/schema"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -964,4 +966,104 @@ func TestCompileFinalSchema(t *testing.T) {
 		}
 	}`)
 	assert.Error(t, compileFinalSchema(dangling), "dangling internal $ref must fail compilation")
+}
+
+func TestExec_DependencyBooleanConditionMatchesKey(t *testing.T) {
+	for _, test := range []struct {
+		name, alias, condition string
+		boolean                bool
+	}{
+		{name: "unrelated dotless", condition: "otherEnabled"},
+		{name: "own name", condition: "child", boolean: true},
+		{name: "comma separated", condition: "other.enabled, child", boolean: true},
+		{name: "alias", alias: "backend", condition: " otherEnabled, backend ", boolean: true},
+		{name: "raw name with alias", alias: "backend", condition: "child"},
+		{name: "nested flag", condition: "child.enabled"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			chartContent := "apiVersion: v2\nname: parent\nversion: 1.0.0\ndependencies:\n  - name: child\n    version: 1.0.0\n    condition: '" + test.condition + "'\n"
+			key := "child"
+			if test.alias != "" {
+				chartContent += "    alias: " + test.alias + "\n"
+				key = test.alias
+			}
+			writeTestFile(t, root, "Chart.yaml", chartContent)
+			writeTestFile(t, root, "values.yaml", "{}\n")
+			writeTestFile(t, root, "charts/child/Chart.yaml", "apiVersion: v2\nname: child\nversion: 1.0.0\n")
+			writeTestFile(t, root, "charts/child/values.yaml", "port: 80\n")
+			setStandardViper(root)
+			require.NoError(t, exec(nil, nil))
+			doc := readTestSchema(t, filepath.Join(root, "values.schema.json"))
+			if test.boolean {
+				assert.Equal(t, stringOrArray{"object", "boolean"}, doc.Properties[key].Type)
+			} else {
+				assert.Equal(t, stringOrArray{"object"}, doc.Properties[key].Type)
+			}
+		})
+	}
+}
+
+func TestExec_NestedDependencyRootConstraints(t *testing.T) {
+	for _, skipValidation := range []bool{false, true} {
+		t.Run(fmt.Sprint(skipValidation), func(t *testing.T) {
+			root := t.TempDir()
+			writeTestFile(t, root, "Chart.yaml", "apiVersion: v2\nname: parent\nversion: 1.0.0\ndependencies:\n  - name: child\n    alias: backend\n    version: 1.0.0\n")
+			writeTestFile(t, root, "values.yaml", "{}\n")
+			writeTestFile(t, root, "charts/child/Chart.yaml", "apiVersion: v2\nname: child\nversion: 1.0.0\n")
+			writeTestFile(t, root, "charts/child/values.yaml", "# @schema.root\n# additionalProperties: false\n# patternProperties:\n#   '^extra-':\n#     type: object\n#     properties:\n#       leaf: {type: string, required: true}\n# @schema.root\nport: 80\n")
+			setStandardViper(root)
+			viper.Set("skip-dependencies-schema-validation", skipValidation)
+			require.NoError(t, exec(nil, nil))
+			data, err := os.ReadFile(filepath.Join(root, "values.schema.json"))
+			require.NoError(t, err)
+			var doc schema.Schema
+			require.NoError(t, json.Unmarshal(data, &doc))
+			backend := doc.Properties["backend"]
+			require.NotNil(t, backend)
+			assert.Equal(t, skipValidation, backend.AdditionalProperties)
+			require.Contains(t, backend.PatternProperties, "^extra-")
+			assert.Empty(t, backend.PatternProperties["^extra-"].Required.Strings)
+			childData, err := os.ReadFile(filepath.Join(root, "charts/child/values.schema.json"))
+			require.NoError(t, err)
+			var child schema.Schema
+			require.NoError(t, json.Unmarshal(childData, &child))
+			assert.Equal(t, false, child.AdditionalProperties)
+			assert.Equal(t, []string{"leaf"}, child.PatternProperties["^extra-"].Required.Strings)
+		})
+	}
+}
+
+func TestExec_MissingDependencyValuesAndDeterminism(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "Chart.yaml", "apiVersion: v2\nname: parent\nversion: 1.0.0\ndependencies:\n  - name: child\n    version: 1.0.0\n")
+	writeTestFile(t, root, "values.yaml", "# @schema\n# properties:\n#   zebra: {type: string, required: true}\n#   alpha: {type: string, required: true}\n# @schema\nconfig: {}\nbase: &base {value: 0x10}\nmerged: {<<: *base}\narray: [1, 2, 3]\n")
+	writeTestFile(t, root, "charts/child/Chart.yaml", "apiVersion: v2\nname: child\nversion: 1.0.0\n")
+	setStandardViper(root)
+	var previous []byte
+	for range 20 {
+		require.NoError(t, exec(nil, nil))
+		data, err := os.ReadFile(filepath.Join(root, "values.schema.json"))
+		require.NoError(t, err)
+		if previous != nil {
+			require.Equal(t, previous, data)
+		}
+		previous = data
+	}
+	doc := readTestSchema(t, filepath.Join(root, "values.schema.json"))
+	require.Contains(t, doc.Properties, "child")
+	require.FileExists(t, filepath.Join(root, "charts/child/values.schema.json"))
+	viper.Set("check", true)
+	require.NoError(t, exec(nil, nil))
+
+	for _, mode := range []string{"annotate", "add-schema-reference"} {
+		setStandardViper(root)
+		viper.Set(mode, true)
+		require.NoError(t, os.Remove(filepath.Join(root, "charts/child/values.schema.json")))
+		require.NoError(t, exec(nil, nil))
+		require.NoFileExists(t, filepath.Join(root, "charts/child/values.yaml"))
+		require.NoFileExists(t, filepath.Join(root, "charts/child/values.schema.json"))
+		setStandardViper(root)
+		require.NoError(t, exec(nil, nil))
+	}
 }

@@ -246,7 +246,9 @@ helm-schema -c charts/my-app -f values.yaml,values.prod.yaml --check
 helm lint charts/my-app -f charts/my-app/values.prod.yaml
 ```
 
-Filenames are relative to each discovered chart directory. Nested maps merge recursively; later scalars and arrays replace earlier ones. Missing files are skipped, and generation fails if none of the configured files exists. Empty, comment-only, and top-level null files contribute an empty map. A nested `null` remains a value. Later comments replace earlier comments when present; otherwise earlier annotations are retained.
+Filenames are relative to each discovered chart directory. Nested maps merge recursively; later scalars and arrays replace earlier ones. Missing files are skipped. If none of the configured files exists, schema generation logs a warning with the chart path and tried filenames and treats the chart as having empty values. `--annotate` and `--add-schema-reference` skip such charts with a warning. Other file access errors still fail generation. Empty, comment-only, and top-level null files contribute an empty map. A nested `null` remains a value. Later comments replace earlier comments when present; otherwise earlier annotations are retained.
+
+YAML merge keys (`<<`) are supported, including aliases, inline mappings, sequences of mappings, and nested merges. Explicit keys override merged keys; earlier entries in a merge sequence take precedence over later entries. Merge keys themselves do not become schema properties.
 
 The resulting schema describes the merged configuration. To maintain different schemas for different environments, generate them separately with `-o`; Helm automatically uses only `values.schema.json` at the chart root.
 
@@ -263,6 +265,7 @@ This adds a `# yaml-language-server: $schema=...` comment to the first matching 
 Use `--annotate` to add inferred `# @schema` type blocks to a values file instead of generating `values.schema.json`.
 
 - Keys that already have `@schema` annotations are left unchanged.
+- Keys inside flow mappings such as `{port: 80}` are skipped; the key holding the mapping can still be annotated. Alias targets are annotated only at their anchor definition, and merge keys (`<<`) are skipped. Repeated annotation is idempotent.
 - With `-d, --dry-run`, the annotated file is printed to stdout instead of being written back.
 - When multiple `--value-files` entries are configured, annotate mode uses only the first matching file.
 
@@ -510,7 +513,7 @@ For library properties and imported properties, an explicit parent annotation ta
 
 ### Skip Dependency Schema Validation
 
-The parent schema's nested dependency wrapper does not copy the dependency root's `additionalProperties` constraint. Constraints on its child properties still apply, and Helm separately validates any schema shipped with the subchart.
+The parent schema's nested dependency wrapper preserves the dependency root's `additionalProperties` and `patternProperties` constraints. Unknown dependency keys are rejected when that root sets `additionalProperties: false`; keys matching `patternProperties` use those schemas. The nested copy's `required` lists are cleared, including inside pattern properties. Library charts continue to merge their properties at the parent root. Helm separately validates any schema shipped with the subchart.
 
 If you want to allow additional properties in dependency schemas and ensure they are not required, you can use the `-m, --skip-dependencies-schema-validation` flag. This will:
 

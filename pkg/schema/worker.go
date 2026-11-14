@@ -9,6 +9,7 @@ import (
 
 	"github.com/dadav/helm-schema/pkg/chart"
 	"github.com/dadav/helm-schema/pkg/util"
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -21,14 +22,21 @@ type Result struct {
 	PreExistingSchema bool
 }
 
-func Worker(
-	dryRun, uncomment, addSchemaReference, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, annotate bool,
-	valueFileNames []string,
-	skipAutoGenerationConfig *SkipAutoGenerationConfig,
-	outFile string,
-	queue <-chan string,
-	results chan<- Result,
-) {
+type WorkerOptions struct {
+	DryRun                    bool
+	Uncomment                 bool
+	AddSchemaReference        bool
+	KeepFullComment           bool
+	HelmDocsCompatibilityMode bool
+	DontRemoveHelmDocsPrefix  bool
+	DontAddGlobal             bool
+	Annotate                  bool
+	ValueFileNames            []string
+	SkipAutoGenerationConfig  *SkipAutoGenerationConfig
+	OutFile                   string
+}
+
+func Worker(options WorkerOptions, queue <-chan string, results chan<- Result) {
 	for chartPath := range queue {
 		result := Result{ChartPath: chartPath}
 
@@ -51,70 +59,71 @@ func Worker(
 
 		var valuesPath string
 		valuesPaths := []string{}
-		errorsWeMaybeCanIgnore := []error{}
+		statErrors := []error{}
 
-		for _, possibleValueFileName := range valueFileNames {
+		for _, possibleValueFileName := range options.ValueFileNames {
 			candidatePath := filepath.Join(chartBasePath, possibleValueFileName)
 			_, err := os.Stat(candidatePath)
 			if err != nil {
 				if !os.IsNotExist(err) {
-					errorsWeMaybeCanIgnore = append(errorsWeMaybeCanIgnore, err)
+					statErrors = append(statErrors, err)
 				}
 				continue
 			}
 			valuesPaths = append(valuesPaths, candidatePath)
 		}
 
-		if len(valuesPaths) == 0 {
-			result.Errors = append(result.Errors, errorsWeMaybeCanIgnore...)
-			result.Errors = append(result.Errors, fmt.Errorf("no values file found (tried: %s)", strings.Join(valueFileNames, ", ")))
+		if len(statErrors) > 0 {
+			result.Errors = append(result.Errors, statErrors...)
 			results <- result
 			continue
 		}
-		valuesPath = valuesPaths[0]
-		result.ValuesPath = valuesPath
+		if len(valuesPaths) == 0 {
+			entry := log.WithFields(log.Fields{"chart_path": chartPath, "tried_names": options.ValueFileNames})
+			if options.Annotate || options.AddSchemaReference {
+				entry.Warn("No values file found; skipping chart")
+				continue
+			}
+			entry.Warn("No values file found; generating schema from empty values")
+		} else {
+			valuesPath = valuesPaths[0]
+			result.ValuesPath = valuesPath
+		}
 
 		// Annotate mode: write @schema annotations into values.yaml and skip schema generation
-		if annotate {
-			if err := AnnotateValuesFile(valuesPath, dryRun); err != nil {
+		if options.Annotate {
+			if err := AnnotateValuesFile(valuesPath, options.DryRun); err != nil {
 				result.Errors = append(result.Errors, err)
 			}
 			results <- result
 			continue
 		}
 
-		valuesFile, err := os.Open(valuesPath)
-		if err != nil {
-			result.Errors = append(result.Errors, err)
-			results <- result
-			continue
-		}
-		content, err := util.ReadFileAndFixNewline(valuesFile)
-		valuesFile.Close()
-		if err != nil {
-			result.Errors = append(result.Errors, err)
-			results <- result
-			continue
-		}
-
-		// Check if we need to add a schema reference
-		if addSchemaReference && !dryRun && !hasSchemaReference(string(content)) {
-			schemaPath := filepath.Join(chartBasePath, outFile)
-			relativePath, err := filepath.Rel(filepath.Dir(valuesPath), schemaPath)
+		if options.AddSchemaReference && !options.DryRun {
+			content, err := os.ReadFile(valuesPath)
 			if err != nil {
-				result.Errors = append(result.Errors, fmt.Errorf("failed to make schema path %s relative to %s: %w", schemaPath, valuesPath, err))
-				results <- result
-				continue
-			}
-			schemaRef := "# yaml-language-server: $schema=" + filepath.ToSlash(relativePath)
-			if err := util.PrefixFirstYamlDocument(schemaRef, valuesPath); err != nil {
 				result.Errors = append(result.Errors, err)
 				results <- result
 				continue
 			}
+			if !hasSchemaReference(string(content)) {
+				schemaPath := filepath.Join(chartBasePath, options.OutFile)
+				relativePath, err := filepath.Rel(filepath.Dir(valuesPath), schemaPath)
+				if err != nil {
+					result.Errors = append(result.Errors, fmt.Errorf("failed to make schema path %s relative to %s: %w", schemaPath, valuesPath, err))
+					results <- result
+					continue
+				}
+				schemaRef := "# yaml-language-server: $schema=" + filepath.ToSlash(relativePath)
+				if err := util.PrefixFirstYamlDocument(schemaRef, valuesPath); err != nil {
+					result.Errors = append(result.Errors, err)
+					results <- result
+					continue
+				}
+			}
 		}
 
-		var mergedValues *yaml.Node
+		mergedValues := normalizeEmptyValuesDocument(&yaml.Node{})
 		for _, currentValuesPath := range valuesPaths {
 			valuesFile, err := os.Open(currentValuesPath)
 			if err != nil {
@@ -129,7 +138,7 @@ func Worker(
 				break
 			}
 
-			if uncomment {
+			if options.Uncomment {
 				// Remove comments from valid yaml before parsing.
 				currentContent, err = util.RemoveCommentsFromYaml(bytes.NewReader(currentContent))
 				if err != nil {
@@ -156,7 +165,7 @@ func Worker(
 			continue
 		}
 
-		schema, err := YamlToSchema(valuesPath, mergedValues, keepFullComment, helmDocsCompatibilityMode, dontRemoveHelmDocsPrefix, dontAddGlobal, skipAutoGenerationConfig, nil)
+		schema, err := YamlToSchema(valuesPath, mergedValues, options.KeepFullComment, options.HelmDocsCompatibilityMode, options.DontRemoveHelmDocsPrefix, options.DontAddGlobal, options.SkipAutoGenerationConfig, nil)
 		if err != nil {
 			result.Errors = append(result.Errors, err)
 			results <- result

@@ -79,7 +79,7 @@
           "title": "env"
         },
         "externalIP": {
-          "default": "443",
+          "default": 443,
           "enum": [
             443,
             80
@@ -124,7 +124,6 @@
               "required": []
             }
           ],
-          "default": "",
           "description": "Name of the deployed service. Defined in the schema annotation",
           "required": [],
           "title": "name"

@@ -3,6 +3,7 @@
   "additionalProperties": false,
   "properties": {
     "child-complex": {
+      "additionalProperties": false,
       "description": "A child chart with nested data for complex import-values",
       "properties": {
         "data": {

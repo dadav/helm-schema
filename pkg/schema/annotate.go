@@ -59,7 +59,15 @@ type InsertionPoint struct {
 func collectInsertionPoints(node *yaml.Node) []InsertionPoint {
 	var points []InsertionPoint
 	collectInsertionPointsRecursive(node, &points)
-	return points
+	seenLines := make(map[int]bool)
+	unique := make([]InsertionPoint, 0, len(points))
+	for _, point := range points {
+		if !seenLines[point.Line] {
+			unique = append(unique, point)
+			seenLines[point.Line] = true
+		}
+	}
+	return unique
 }
 
 func collectInsertionPointsRecursive(node *yaml.Node, points *[]InsertionPoint) {
@@ -73,9 +81,15 @@ func collectInsertionPointsRecursive(node *yaml.Node, points *[]InsertionPoint) 
 			collectInsertionPointsRecursive(child, points)
 		}
 	case yaml.MappingNode:
+		if node.Style&yaml.FlowStyle != 0 {
+			return
+		}
 		for i := 0; i < len(node.Content)-1; i += 2 {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
+			if keyNode.Tag == "!!merge" {
+				continue
+			}
 
 			if !HasSchemaAnnotation(keyNode.HeadComment) {
 				typeStr := typeAnnotationFromTag(valueNode.Tag)
@@ -92,11 +106,6 @@ func collectInsertionPointsRecursive(node *yaml.Node, points *[]InsertionPoint) 
 			// Recurse into mapping values for nested keys
 			if valueNode.Kind == yaml.MappingNode {
 				collectInsertionPointsRecursive(valueNode, points)
-			}
-
-			// Handle alias nodes that point to mappings
-			if valueNode.Kind == yaml.AliasNode && valueNode.Alias != nil && valueNode.Alias.Kind == yaml.MappingNode {
-				collectInsertionPointsRecursive(valueNode.Alias, points)
 			}
 		}
 	}

@@ -2,9 +2,13 @@ package util
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func TestReadFileAndFixNewline(t *testing.T) {
@@ -107,5 +111,26 @@ func TestIsRelativeFile(t *testing.T) {
 				t.Fatalf("expected resolved path %q, got %q", tt.expectedPath, resolvedPath)
 			}
 		})
+	}
+}
+
+func TestRemoveCommentsFromYamlLongLinesAndReadErrors(t *testing.T) {
+	longValue := strings.Repeat("x", 70*1024)
+	for _, newline := range []string{"\n", "\r\n"} {
+		input := "long: " + longValue + newline + "after: true" + newline
+		got, err := RemoveCommentsFromYaml(strings.NewReader(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "long: " + longValue + "\nafter: true\n"
+		if string(got) != want {
+			t.Fatalf("long line or following content changed: got %d bytes, want %d", len(got), len(want))
+		}
+	}
+	readErr := errors.New("read failed")
+	reader := io.MultiReader(strings.NewReader("before: true\n"), iotest.ErrReader(readErr))
+	got, err := RemoveCommentsFromYaml(reader)
+	if !errors.Is(err, readErr) || got != nil {
+		t.Fatalf("expected read error without truncated output, got %q, %v", got, err)
 	}
 }

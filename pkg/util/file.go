@@ -1,7 +1,6 @@
 package util
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -66,7 +65,10 @@ func PrefixFirstYamlDocument(line, file string) error {
 func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 	result := make([]byte, 0)
 	buff := make([]byte, 0)
-	scanner := bufio.NewScanner(reader)
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read YAML while removing comments: %w", err)
+	}
 
 	commentMatcher := regexp.MustCompile(`^\s*#\s*`)
 	// Capture indentation and comment marker separately
@@ -79,8 +81,9 @@ func RemoveCommentsFromYaml(reader io.Reader) ([]byte, error) {
 	var inCode, inSchema bool
 	var unknownYaml interface{}
 
-	for scanner.Scan() {
-		line = scanner.Text()
+	for remaining := string(content); remaining != ""; {
+		line, remaining, _ = strings.Cut(remaining, "\n")
+		line = strings.TrimSuffix(line, "\r")
 
 		// If the line is empty and we are parsing a block of potential yaml,
 		// the parsed block of yaml is "finished" and should be added to the

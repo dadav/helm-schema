@@ -388,21 +388,19 @@ func exec(cmd *cobra.Command, _ []string) error {
 
 		go func() {
 			defer wg.Done()
-			schema.Worker(
-				dryRun,
-				uncomment,
-				addSchemaReference,
-				keepFullComment,
-				helmDocsCompatibilityMode,
-				dontRemoveHelmDocsPrefix,
-				dontAddGlobal,
-				annotate,
-				valueFileNames,
-				skipConfig,
-				outFile,
-				queue,
-				resultsChan,
-			)
+			schema.Worker(schema.WorkerOptions{
+				DryRun:                    dryRun,
+				Uncomment:                 uncomment,
+				AddSchemaReference:        addSchemaReference,
+				KeepFullComment:           keepFullComment,
+				HelmDocsCompatibilityMode: helmDocsCompatibilityMode,
+				DontRemoveHelmDocsPrefix:  dontRemoveHelmDocsPrefix,
+				DontAddGlobal:             dontAddGlobal,
+				Annotate:                  annotate,
+				ValueFileNames:            valueFileNames,
+				SkipAutoGenerationConfig:  skipConfig,
+				OutFile:                   outFile,
+			}, queue, resultsChan)
 		}()
 	}
 
@@ -577,13 +575,18 @@ func exec(cmd *cobra.Command, _ []string) error {
 							// Properties can be shared when no definitions need rebasing. Clearing required
 							// flags is idempotent, and TopoSort writes the dependency before its parents.
 							depSchema := schema.Schema{
-								Type:        []string{"object"},
-								Title:       dep.Name,
-								Description: dependencyResult.Chart.Description,
-								Properties:  dependencySchema.Properties,
+								Type:                 []string{"object"},
+								Title:                dep.Name,
+								Description:          dependencyResult.Chart.Description,
+								Properties:           dependencySchema.Properties,
+								AdditionalProperties: dependencySchema.AdditionalProperties,
+								PatternProperties:    dependencySchema.PatternProperties,
 							}
-							if dep.Condition != "" && !strings.Contains(dep.Condition, ".") {
-								depSchema.Type = []string{"object", "boolean"}
+							for _, condition := range strings.Split(dep.Condition, ",") {
+								if strings.TrimSpace(condition) == depKey {
+									depSchema.Type = []string{"object", "boolean"}
+									break
+								}
 							}
 							depSchema.DisableRequiredProperties()
 

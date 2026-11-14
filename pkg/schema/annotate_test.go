@@ -246,3 +246,48 @@ func TestAnnotateContent(t *testing.T) {
 		})
 	}
 }
+
+func TestAnnotateAliasesFlowMappingsAndMergeKeys(t *testing.T) {
+	input := []byte(`defaults: &defaults
+  replicas: 2
+copy: *defaults
+flow: {enabled: true, nested: {port: 80}}
+merged:
+  <<: *defaults
+  enabled: true
+`)
+	var node yaml.Node
+	if err := yaml.Unmarshal(input, &node); err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[int]bool)
+	for _, point := range collectInsertionPoints(&node) {
+		if seen[point.Line] {
+			t.Fatalf("duplicate insertion on line %d", point.Line)
+		}
+		seen[point.Line] = true
+	}
+	if len(seen) != 5 {
+		t.Fatalf("expected 5 annotated keys, got %v", seen)
+	}
+	annotated, err := AnnotateContent(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(annotated), "# type: object\n# @schema\nflow: {enabled: true, nested: {port: 80}}") {
+		t.Fatalf("flow mapping's owning key was not annotated: %s", annotated)
+	}
+	if err := yaml.Unmarshal(annotated, &node); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := YamlToSchema("", &node, false, false, false, true, nil, nil); err != nil {
+		t.Fatalf("generation after annotation failed: %v", err)
+	}
+	again, err := AnnotateContent(annotated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(annotated) != string(again) {
+		t.Fatalf("annotation is not idempotent:\n%s", again)
+	}
+}

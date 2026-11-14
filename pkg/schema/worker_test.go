@@ -1,10 +1,13 @@
 package schema
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,7 +69,7 @@ version: 1.0.0
 			},
 			chartPath:      "Chart.yaml",
 			valueFileNames: []string{"values.yaml"},
-			expectedErrors: true,
+			expectedErrors: false,
 			skipAutoGenerationConfig: &SkipAutoGenerationConfig{
 				Title:                false,
 				Description:          false,
@@ -123,21 +126,18 @@ key1: value1
 			close(queue)
 
 			// Run worker
-			Worker(
-				tt.dryRun,
-				tt.uncomment,
-				tt.addSchemaReference,
-				tt.keepFullComment,
-				tt.helmDocsCompatibilityMode,
-				tt.dontRemoveHelmDocsPrefix,
-				tt.dontAddGlobal,
-				false, // annotate
-				tt.valueFileNames,
-				tt.skipAutoGenerationConfig,
-				tt.outFile,
-				queue,
-				results,
-			)
+			Worker(WorkerOptions{
+				DryRun:                    tt.dryRun,
+				Uncomment:                 tt.uncomment,
+				AddSchemaReference:        tt.addSchemaReference,
+				KeepFullComment:           tt.keepFullComment,
+				HelmDocsCompatibilityMode: tt.helmDocsCompatibilityMode,
+				DontRemoveHelmDocsPrefix:  tt.dontRemoveHelmDocsPrefix,
+				DontAddGlobal:             tt.dontAddGlobal,
+				ValueFileNames:            tt.valueFileNames,
+				SkipAutoGenerationConfig:  tt.skipAutoGenerationConfig,
+				OutFile:                   tt.outFile,
+			}, queue, results)
 
 			// Get result
 			result := <-results
@@ -147,7 +147,9 @@ key1: value1
 			} else {
 				assert.Empty(t, result.Errors)
 				assert.NotNil(t, result.Chart)
-				assert.NotEmpty(t, result.ValuesPath)
+				if tt.name != "missing values file" {
+					assert.NotEmpty(t, result.ValuesPath)
+				}
 				assert.NotNil(t, result.Schema)
 			}
 		})
@@ -179,7 +181,11 @@ func TestWorker_EmptyValuesFiles(t *testing.T) {
 				results := make(chan Result, 1)
 				queue <- filepath.Join(root, "Chart.yaml")
 				close(queue)
-				Worker(false, false, false, false, false, false, false, false, files, &SkipAutoGenerationConfig{}, "values.schema.json", queue, results)
+				Worker(WorkerOptions{
+					ValueFileNames:           files,
+					SkipAutoGenerationConfig: &SkipAutoGenerationConfig{},
+					OutFile:                  "values.schema.json",
+				}, queue, results)
 				result := <-results
 				require.Empty(t, result.Errors)
 				assert.Equal(t, StringOrArrayOfString{"object"}, result.Schema.Type)
@@ -218,7 +224,12 @@ func TestWorker_SchemaReferencePaths(t *testing.T) {
 				results := make(chan Result, 1)
 				queue <- chartPath
 				close(queue)
-				Worker(false, false, true, false, false, false, false, false, []string{test.valuesPath, "second.yaml"}, &SkipAutoGenerationConfig{}, test.outputPath, queue, results)
+				Worker(WorkerOptions{
+					AddSchemaReference:       true,
+					ValueFileNames:           []string{test.valuesPath, "second.yaml"},
+					SkipAutoGenerationConfig: &SkipAutoGenerationConfig{},
+					OutFile:                  test.outputPath,
+				}, queue, results)
 				require.Empty(t, (<-results).Errors)
 			}
 			content, err := os.ReadFile(valuesPath)
@@ -247,21 +258,13 @@ func TestWorker_DryRunDoesNotWriteSchemaReference(t *testing.T) {
 	queue <- chartPath
 	close(queue)
 
-	Worker(
-		true,  // dryRun
-		false, // uncomment
-		true,  // addSchemaReference
-		false, // keepFullComment
-		false, // helmDocsCompatibilityMode
-		false, // dontRemoveHelmDocsPrefix
-		false, // dontAddGlobal
-		false, // annotate
-		[]string{"values.yaml"},
-		&SkipAutoGenerationConfig{},
-		"values.schema.json",
-		queue,
-		results,
-	)
+	Worker(WorkerOptions{
+		DryRun:                   true,
+		AddSchemaReference:       true,
+		ValueFileNames:           []string{"values.yaml"},
+		SkipAutoGenerationConfig: &SkipAutoGenerationConfig{},
+		OutFile:                  "values.schema.json",
+	}, queue, results)
 
 	result := <-results
 	assert.Empty(t, result.Errors)
@@ -308,21 +311,11 @@ replicas: "two"
 	queue <- chartPath
 	close(queue)
 
-	Worker(
-		false, // dryRun
-		false, // uncomment
-		false, // addSchemaReference
-		false, // keepFullComment
-		false, // helmDocsCompatibilityMode
-		false, // dontRemoveHelmDocsPrefix
-		false, // dontAddGlobal
-		false, // annotate
-		[]string{"values.base.yaml", "values.prod.yaml"},
-		&SkipAutoGenerationConfig{},
-		"values.schema.json",
-		queue,
-		results,
-	)
+	Worker(WorkerOptions{
+		ValueFileNames:           []string{"values.base.yaml", "values.prod.yaml"},
+		SkipAutoGenerationConfig: &SkipAutoGenerationConfig{},
+		OutFile:                  "values.schema.json",
+	}, queue, results)
 
 	result := <-results
 	assert.Empty(t, result.Errors)
@@ -349,5 +342,60 @@ replicas: "two"
 		if assert.NotNil(t, pullPolicySchema) {
 			assert.Equal(t, "Always", pullPolicySchema.Default)
 		}
+	}
+}
+
+func TestWorkerMissingValues(t *testing.T) {
+	for _, mode := range []string{"schema", "annotate", "reference", "reference dry run"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			chartPath := filepath.Join(root, "Chart.yaml")
+			require.NoError(t, os.WriteFile(chartPath, []byte("apiVersion: v2\nname: demo\nversion: 1.0.0\n"), 0o644))
+			queue := make(chan string, 1)
+			results := make(chan Result, 1)
+			queue <- chartPath
+			close(queue)
+			hook := logtest.NewGlobal()
+			t.Cleanup(hook.Reset)
+			Worker(WorkerOptions{
+				Annotate: mode == "annotate", AddSchemaReference: strings.HasPrefix(mode, "reference"),
+				DryRun: mode == "reference dry run", ValueFileNames: []string{"values.yaml", "extra.yaml"},
+			}, queue, results)
+			require.Equal(t, chartPath, hook.LastEntry().Data["chart_path"])
+			require.Equal(t, []string{"values.yaml", "extra.yaml"}, hook.LastEntry().Data["tried_names"])
+			if mode == "schema" {
+				require.Len(t, results, 1)
+				result := <-results
+				require.Empty(t, result.Errors)
+				require.Empty(t, result.ValuesPath)
+				require.Equal(t, StringOrArrayOfString{"object"}, result.Schema.Type)
+				require.Contains(t, result.Schema.Properties, "global")
+			} else {
+				require.Empty(t, results)
+			}
+			files, err := os.ReadDir(root)
+			require.NoError(t, err)
+			require.Len(t, files, 1)
+		})
+	}
+}
+
+func TestWorkerValuesStatErrorsAreFatal(t *testing.T) {
+	for _, validFile := range []bool{false, true} {
+		t.Run(fmt.Sprint(validFile), func(t *testing.T) {
+			root := t.TempDir()
+			chartPath := filepath.Join(root, "Chart.yaml")
+			require.NoError(t, os.WriteFile(chartPath, []byte("apiVersion: v2\nname: demo\nversion: 1.0.0\n"), 0o644))
+			require.NoError(t, os.Symlink("loop.yaml", filepath.Join(root, "loop.yaml")))
+			if validFile {
+				require.NoError(t, os.WriteFile(filepath.Join(root, "values.yaml"), []byte("value: 1\n"), 0o644))
+			}
+			queue := make(chan string, 1)
+			results := make(chan Result, 1)
+			queue <- chartPath
+			close(queue)
+			Worker(WorkerOptions{ValueFileNames: []string{"loop.yaml", "values.yaml"}}, queue, results)
+			require.NotEmpty(t, (<-results).Errors)
+		})
 	}
 }

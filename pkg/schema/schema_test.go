@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/magiconair/properties/assert"
+	logtest "github.com/sirupsen/logrus/hooks/test"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
@@ -1473,4 +1475,185 @@ func TestYamlToSchemaNilSkipConfig(t *testing.T) {
 	if schema == nil {
 		t.Fatal("expected non-nil schema")
 	}
+}
+
+func TestYamlToSchemaMergeKeys(t *testing.T) {
+	input := `first: &first
+  shared: first
+  inherited: 1
+second: &second
+  shared: second
+  other: true
+nested: &nested
+  <<: *first
+  inherited: 2
+combined:
+  <<: [*nested, *second]
+  other: false
+inline:
+  before: explicit
+  <<: {before: merged, after: 3}
+# @schema
+# type: object
+# patternProperties:
+#   '^shared$': {type: string}
+# @schema
+patterned:
+  <<: *first
+`
+	var node yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(input), &node))
+	generated, err := YamlToSchema("", &node, false, false, false, true, nil, nil)
+	require.NoError(t, err)
+	combined := generated.Properties["combined"]
+	require.Equal(t, "first", combined.Properties["shared"].Default)
+	require.Equal(t, 2, combined.Properties["inherited"].Default)
+	require.Equal(t, false, combined.Properties["other"].Default)
+	require.NotContains(t, combined.Properties, "<<")
+	require.NotContains(t, combined.Required.Strings, "<<")
+	require.Equal(t, "explicit", generated.Properties["inline"].Properties["before"].Default)
+	require.Equal(t, 3, generated.Properties["inline"].Properties["after"].Default)
+	patterned := generated.Properties["patterned"]
+	require.Contains(t, patterned.Properties, "inherited")
+	require.NotContains(t, patterned.Properties, "shared")
+	require.NotContains(t, patterned.Properties, "<<")
+	require.NotContains(t, patterned.Required.Strings, "<<")
+
+	for _, input := range []string{"value: {<<: 1}", "value: &value {<<: *value}"} {
+		require.NoError(t, yaml.Unmarshal([]byte(input), &node))
+		_, err := YamlToSchema("", &node, false, false, false, true, nil, nil)
+		require.Error(t, err)
+	}
+}
+
+func TestYamlToSchemaAnnotationRequiredProperties(t *testing.T) {
+	for _, test := range []struct {
+		name, input  string
+		selectSchema func(*Schema) *Schema
+	}{
+		{"object", "# @schema\n# properties:\n#   zebra: {type: string, required: true}\n#   alpha: {type: string, required: true}\n# @schema\nvalue: {}\n", func(s *Schema) *Schema { return s.Properties["value"] }},
+		{"items", "# @schema\n# type: array\n# items:\n#   properties:\n#     zebra: {type: string, required: true}\n#     alpha: {type: string, required: true}\n# @schema\nvalue: []\n", func(s *Schema) *Schema { return s.Properties["value"].Items }},
+		{"root adjacent", "# @schema.root\n# allOf:\n#   - properties:\n#       zebra: {type: string, required: true}\n#       alpha: {type: string, required: true}\n# @schema.root\nvalue: {}\n", func(s *Schema) *Schema { return s.AllOf[0] }},
+		{"root document", "# @schema.root\n# allOf:\n#   - properties:\n#       zebra: {type: string, required: true}\n#       alpha: {type: string, required: true}\n# @schema.root\n\nvalue: {}\n", func(s *Schema) *Schema { return s.AllOf[0] }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for range 20 {
+				var node yaml.Node
+				require.NoError(t, yaml.Unmarshal([]byte(test.input), &node))
+				generated, err := YamlToSchema("", &node, true, false, false, true, nil, nil)
+				require.NoError(t, err)
+				require.Equal(t, []string{"alpha", "zebra"}, test.selectSchema(generated).Required.Strings)
+			}
+		})
+	}
+}
+
+func TestYamlToSchemaDecodedScalarDefaults(t *testing.T) {
+	for _, test := range []struct {
+		name, value, annotation string
+		want                    any
+	}{
+		{"hex", "0x10", "", 16},
+		{"underscores", "1_000", "", 1000},
+		{"uppercase boolean", "True", "", true},
+		{"false", "False", "", false},
+		{"zero", "0", "", 0},
+		{"float", "1.5", "", 1.5},
+		{"no annotation type", "5", "description: count", 5},
+		{"string type", "0x10", "type: string", "0x10"},
+		{"union excludes decoded", "True", "type: [integer, string]", "True"},
+		{"union accepts decoded", "5", "type: [string, integer]", 5},
+		{"number accepts integer", "5", "type: [string, number]", 5},
+		{"quoted numeric", `"5"`, "type: integer", "5"},
+		{"decoded despite mismatch", "5", "type: boolean", 5},
+		{"null", "null", "", nil},
+		{"null with string type", "~", "type: string", nil},
+		{"timestamp", "2024-01-02", "", "2024-01-02"},
+		{"timestamp raw spelling", "2024-01-02t03:04:05Z", "", "2024-01-02t03:04:05Z"},
+		{"explicit default", "5", "default: chosen", "chosen"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := "value: " + test.value + "\n"
+			if test.annotation != "" {
+				input = "# @schema\n# " + test.annotation + "\n# @schema\n" + input
+			}
+			var node yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(input), &node))
+			generated, err := YamlToSchema("", &node, false, false, false, true, nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, test.want, generated.Properties["value"].Default)
+			encoded, err := json.Marshal(generated.Properties["value"])
+			require.NoError(t, err)
+			if test.want == nil {
+				require.NotContains(t, string(encoded), `"default"`)
+			}
+		})
+	}
+}
+
+func TestYamlToSchemaDeduplicatesInferredArrayItems(t *testing.T) {
+	var node yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte("mixed: [1, 2, text, other, true, false, {x: 1}, {x: 1}, {x: 2}]\nsingle: [1, 2, 3]\n"), &node))
+	generated, err := YamlToSchema("", &node, false, false, false, true, nil, nil)
+	require.NoError(t, err)
+	items := generated.Properties["mixed"].Items.AnyOf
+	require.Len(t, items, 5)
+	for i, typ := range []string{"integer", "string", "boolean", "object", "object"} {
+		require.Equal(t, StringOrArrayOfString{typ}, items[i].Type)
+	}
+	require.Equal(t, 1, items[3].Properties["x"].Default)
+	require.Equal(t, 2, items[4].Properties["x"].Default)
+	require.Len(t, generated.Properties["single"].Items.AnyOf, 1)
+}
+
+func TestHoistDefinitionsAllChildrenAndCollisions(t *testing.T) {
+	hook := logtest.NewGlobal()
+	t.Cleanup(hook.Reset)
+	first := &Schema{Type: StringOrArrayOfString{"string"}}
+	second := &Schema{Type: StringOrArrayOfString{"integer"}}
+	withDefinition := func(name string) *Schema {
+		return &Schema{Definitions: map[string]*Schema{name: {Type: StringOrArrayOfString{"string"}}}}
+	}
+	root := &Schema{
+		Definitions: map[string]*Schema{"outer": withDefinition("inner")},
+		Properties: map[string]*Schema{
+			"z": {Definitions: map[string]*Schema{"conflict": second}},
+			"a": {Definitions: map[string]*Schema{"conflict": first}},
+			"b": {Definitions: map[string]*Schema{"conflict": {Type: StringOrArrayOfString{"string"}}}},
+		},
+		PatternProperties: map[string]*Schema{".*": withDefinition("pattern")},
+		Items:             withDefinition("items"), Contains: withDefinition("contains"), PropertyNames: withDefinition("names"),
+		If: withDefinition("if"), Then: withDefinition("then"), Else: withDefinition("else"), Not: withDefinition("not"),
+		AllOf: []*Schema{withDefinition("all")}, AnyOf: []*Schema{withDefinition("any")}, OneOf: []*Schema{withDefinition("one")},
+		AdditionalProperties: withDefinition("additional"), AdditionalItems: *withDefinition("additionalItems"),
+	}
+	root.HoistDefinitions()
+	for _, name := range []string{"outer", "inner", "conflict", "pattern", "items", "contains", "names", "if", "then", "else", "not", "all", "any", "one", "additional", "additionalItems"} {
+		require.Contains(t, root.Definitions, name)
+		require.Empty(t, root.Definitions[name].Definitions)
+	}
+	require.Same(t, first, root.Definitions["conflict"])
+	require.Empty(t, root.Contains.Definitions)
+	require.Empty(t, root.PropertyNames.Definitions)
+	require.Len(t, hook.AllEntries(), 1)
+	require.Equal(t, "conflict", hook.LastEntry().Data["definition"])
+	before, err := json.Marshal(root)
+	require.NoError(t, err)
+	root.HoistDefinitions()
+	after, err := json.Marshal(root)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+}
+
+func TestDisableRequiredPropertiesPatternProperties(t *testing.T) {
+	root := &Schema{PatternProperties: map[string]*Schema{
+		".*": {Required: NewBoolOrArrayOfString([]string{"nested"}, true), Properties: map[string]*Schema{
+			"nested": {Required: NewBoolOrArrayOfString([]string{"leaf"}, true)},
+		}},
+	}}
+	root.DisableRequiredProperties()
+	require.Empty(t, root.PatternProperties[".*"].Required.Strings)
+	require.False(t, root.PatternProperties[".*"].Required.Bool)
+	require.Empty(t, root.PatternProperties[".*"].Properties["nested"].Required.Strings)
+	require.False(t, root.PatternProperties[".*"].Properties["nested"].Required.Bool)
 }
